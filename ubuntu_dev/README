@@ -1,0 +1,2 @@
+# Run
+docker build -t ubuntu_dev .
