@@ -1,27 +1,36 @@
-FROM nvidia/cuda:11.0-cudnn8-runtime-ubuntu18.04 
+FROM nvidia/cuda:12.8.0-cudnn-runtime-ubuntu20.04 
 
 RUN  apt-get update \
     && apt-get install -y curl
 
 WORKDIR /tmp
 
-RUN curl -O https://repo.anaconda.com/miniconda/Miniconda3-py38_4.8.3-Linux-x86_64.sh
+RUN curl -O https://repo.anaconda.com/miniconda/Miniconda3-py311_25.1.1-2-Linux-x86_64.sh
 
-RUN echo "d63adf39f2c220950a063e0529d4ff74  Miniconda3-py38_4.8.3-Linux-x86_64.sh" >> Miniconda3-py38_4.8.3-Linux-x86_64.sh.md5\
-    && md5sum -c Miniconda3-py38_4.8.3-Linux-x86_64.sh.md5
+RUN echo "d8c1645776c0758214e4191c605abe5878002051316bd423f2b14b22d6cb4251  Miniconda3-py311_25.1.1-2-Linux-x86_64.sh" >> Miniconda3-py311_25.1.1-2-Linux-x86_64.sh.sha256 \
+   && sha256sum -c Miniconda3-py311_25.1.1-2-Linux-x86_64.sh.sha256
 
-ENV CONDA_INSTALL_DIR /root
+ENV CONDA_INSTALL_DIR=/root
 
-RUN bash Miniconda3-py38_4.8.3-Linux-x86_64.sh -f -b -p ${CONDA_INSTALL_DIR}
+RUN bash Miniconda3-py311_25.1.1-2-Linux-x86_64.sh -f -b -p ${CONDA_INSTALL_DIR}
 
 RUN bash -c "source ${CONDA_INSTALL_DIR}/bin/activate && conda init"
 
-RUN apt-get install -y sudo emacs
+RUN apt update && apt install tzdata -y
 
-ENV PATH /root/bin:$PATH
+ENV TZ="America/Los_Angeles"  
 
-RUN bash -c "conda create -y --name pytorch pytorch torchvision cudatoolkit=10.2 jupyter matplotlib -c pytorch"
+RUN ln -fs /usr/share/zoneinfo/America/Los_Angeles /etc/localtime
+RUN apt-get install -y sudo emacs git build-essential libssl-dev
 
-RUN bash -c "conda update conda && conda create -y --name tensorflow tensorflow-gpu keras cudatoolkit=10.1 jupyter matplotlib"
+ENV PATH=/root/bin:$PATH
+ 
+RUN bash -c "conda create -y --name pytorch python=3.11"
 
-EXPOSE 80
+SHELL ["conda", "run", "-n", "pytorch", "/bin/bash", "-c"]
+
+RUN pip install --no-input torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126
+
+#RUN bash -c "conda update conda && conda create -y --name tensorflow tensorflow-gpu keras cudatoolkit=10.1 jupyter matplotlib"
+
+#EXPOSE 80
