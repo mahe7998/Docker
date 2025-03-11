@@ -31,6 +31,12 @@ SHELL ["conda", "run", "-n", "pytorch", "/bin/bash", "-c"]
 
 RUN pip install --no-input torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126
 
-#RUN bash -c "conda update conda && conda create -y --name tensorflow tensorflow-gpu keras cudatoolkit=10.1 jupyter matplotlib"
+SHELL ["/bin/bash", "-c"]
 
-#EXPOSE 80
+RUN bash -c "conda create -y --name tensorflow python=3.10"
+
+SHELL ["conda", "run", "-n", "tensorflow", "/bin/bash", "-c"]
+
+RUN pip install --no-input tensorflow keras jupyter matplotlib
+
+EXPOSE 80
