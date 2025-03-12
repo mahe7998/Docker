@@ -31,6 +31,8 @@ SHELL ["conda", "run", "-n", "pytorch", "/bin/bash", "-c"]
 
 RUN pip install --no-input torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126
 
+RUN pip install --no-input jupyter matplotlib pillow
+
 SHELL ["/bin/bash", "-c"]
 
 RUN bash -c "conda create -y --name tensorflow python=3.10"
