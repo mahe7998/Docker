@@ -2,7 +2,10 @@ version: '3'
 
 services:
   sftp:
-    build: .
+    build: 
+      context: .
+      args:
+        - SFTP_PASSWORD=${SFTP_PASSWORD:?ERROR: SFTP_PASSWORD environment variable is required}
     ports:
       - "2222:22"
     environment:

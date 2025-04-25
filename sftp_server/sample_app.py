@@ -143,7 +143,7 @@ def main():
     parser.add_argument("--host", default="localhost", help="SFTP server hostname")
     parser.add_argument("--port", type=int, default=2222, help="SFTP server port")
     parser.add_argument("--username", default="sftp_user", help="SFTP username")
-    parser.add_argument("--password", default="welcome1234", help="SFTP password")
+    parser.add_argument("--password", help="SFTP password (if not provided, SFTP_PASSWORD environment variable will be used)")
     
     subparsers = parser.add_subparsers(dest="command", help="Command to execute")
     

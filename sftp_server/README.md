@@ -13,23 +13,32 @@ This Docker container sets up an SFTP server that uses a local directory as its 
 
 ## Server Setup
 
+### Security Notice
+For security, the SFTP password is not hardcoded in the Docker image. You must provide it via an environment variable.
+
 ### Using Docker Compose
 
 1. Clone this repository
 2. Create the sftp_data directory (for instance /Users/jmahe/sftp_data)
-3. Run docker-compose:
+3. Set the SFTP password environment variable:
+
+```bash
+export SFTP_PASSWORD=your_secure_password
+```
+
+4. Run docker-compose:
 
 ```bash
 docker-compose up -d
 ```
 
-To restart
+To restart:
 ```bash
 docker-compose restart
 ```
 
 This will:
-- Build the Docker image
+- Build the Docker image with your provided password
 - Start the SFTP server on port 2222
 - Mount the `/sftp_data` directory as the SFTP root folder
 
@@ -38,7 +47,7 @@ This will:
 Build the image:
 
 ```bash
-docker build -t sftp-server .
+docker build --build-arg SFTP_PASSWORD=your_secure_password -t sftp-server .
 ```
 
 Run the container:
@@ -72,14 +81,25 @@ pip install -r requirements.txt
 
 ### Using the Library
 
+First, set the SFTP password either as an environment variable or provide it directly:
+
+```bash
+export SFTP_PASSWORD=your_secure_password
+```
+
+Then use the client in your Python code:
+
 ```python
 from sftp_client import SFTPClient
 
 # Connect to SFTP server
+# Option 1: It will use the SFTP_PASSWORD environment variable
 with SFTPClient(host='localhost', port=2222) as client:
     # Create a directory
     client.create_directory('test_dir')
     
+# Option 2: Provide password directly
+with SFTPClient(host='localhost', port=2222, password='your_secure_password') as client:
     # Upload a file
     client.upload_file('local_file.txt', 'test_dir/remote_file.txt')
     
@@ -106,29 +126,35 @@ with SFTPClient(host='localhost', port=2222) as client:
 The project includes a command-line sample application for testing SFTP operations.
 
 ```bash
+# Set the SFTP password
+export SFTP_PASSWORD=your_secure_password
+
 # Create a directory
-uv run python sample_app.py mkdir test_dir
+python sample_app.py mkdir test_dir
 
 # Upload a file
-uv run python sample_app.py upload local_file.txt test_dir/remote_file.txt
+python sample_app.py upload local_file.txt test_dir/remote_file.txt
 
 # List directory contents
-uv run python sample_app.py ls test_dir
+python sample_app.py ls test_dir
 
 # Download a file
-uv run python sample_app.py download test_dir/remote_file.txt downloaded_file.txt
+python sample_app.py download test_dir/remote_file.txt downloaded_file.txt
 
 # Get file info
-uv run python sample_app.py info test_dir/remote_file.txt
+python sample_app.py info test_dir/remote_file.txt
 
 # Remove a file
-uv run python sample_app.py rm test_dir/remote_file.txt
+python sample_app.py rm test_dir/remote_file.txt
 
 # Remove a directory (recursive)
-uv run python sample_app.py rmdir -r test_dir
+python sample_app.py rmdir -r test_dir
 
 # Run performance tests
-uv run python sample_app.py perftest
+python sample_app.py perftest
+
+# Alternatively, provide password directly
+python sample_app.py --password your_secure_password ls
 ```
 
 ## Running Tests
