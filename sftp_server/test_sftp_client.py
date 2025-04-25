@@ -19,7 +19,12 @@ class TestSFTPClient(unittest.TestCase):
         cls.create_test_file("test_files/large_file.bin", 10 * 1024 * 1024)  # 10MB
         
         # Connect to SFTP server
-        cls.client = SFTPClient()
+        import os
+        password = os.environ.get('SFTP_PASSWORD')
+        if not password:
+            raise ValueError("SFTP_PASSWORD environment variable must be set to run tests")
+            
+        cls.client = SFTPClient(password=password)
         cls.client.connect()
         
     @classmethod

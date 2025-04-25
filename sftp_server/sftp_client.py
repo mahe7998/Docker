@@ -6,7 +6,7 @@ from stat import S_ISDIR
 from datetime import datetime
 
 class SFTPClient:
-    def __init__(self, host="localhost", port=2222, username="sftp_user", password="welcome1234"):
+    def __init__(self, host="localhost", port=2222, username="sftp_user", password=None):
         """Initialize SFTP client with connection parameters."""
         self.host = host
         self.port = port
@@ -18,6 +18,13 @@ class SFTPClient:
     def connect(self):
         """Establish connection to SFTP server."""
         try:
+            if self.password is None:
+                # Try to get password from environment variable
+                import os
+                self.password = os.environ.get('SFTP_PASSWORD')
+                if self.password is None:
+                    raise ValueError("SFTP password not provided and SFTP_PASSWORD environment variable not set")
+            
             self.transport = paramiko.Transport((self.host, self.port))
             self.transport.connect(username=self.username, password=self.password)
             self.sftp = paramiko.SFTPClient.from_transport(self.transport)

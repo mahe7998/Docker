@@ -1,9 +1,18 @@
 FROM alpine:latest
 
+# Get password from build argument (required)
+ARG SFTP_PASSWORD
+# Verify password was provided
+RUN if [ -z "$SFTP_PASSWORD" ]; then \
+    echo "ERROR: SFTP_PASSWORD build argument is required." && \
+    echo "Build with: docker build --build-arg SFTP_PASSWORD=your_password ." && \
+    exit 1; \
+    fi
+
 RUN apk add --no-cache openssh \
     && mkdir -p /home/sftp_user \
     && adduser -h /home/sftp_user -s /sbin/nologin -D sftp_user \
-    && echo "sftp_user:welcome1234" | chpasswd \
+    && echo "sftp_user:${SFTP_PASSWORD}" | chpasswd \
     && mkdir -p /etc/ssh/sshd_config.d
 
 # Configure SSHD
