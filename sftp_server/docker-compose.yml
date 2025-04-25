@@ -1,0 +1,11 @@
+version: '3'
+
+services:
+  sftp:
+    build: .
+    ports:
+      - "2222:22"
+    environment:
+      - SFTP_ROOT_FOLDER=/sftp/data
+    volumes:
+      - /Users/jmahe/sftp_data:/sftp/data
