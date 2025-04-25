@@ -24,7 +24,7 @@ services:
       - docker_network
     environment:
       MYSQL_DATABASE: my_wiki
-      MYSQL_ROOT_PASSWORD: .ve3nxq.
+      MYSQL_ROOT_PASSWORD: ${WIKIMEDIA_PASSWORD:?WIKIMEDIA_PASSWORD environment variable is required}
       MYSQL_USER: wikimedia
       MYSQL_PASSWORD: wikimedia
     volumes:
