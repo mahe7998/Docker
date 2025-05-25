@@ -2,6 +2,8 @@ FROM alpine:latest
 
 # Get password from build argument (required)
 ARG SFTP_PASSWORD
+ARG SFTP_USERNAME=sftp_user
+
 # Verify password was provided
 RUN if [ -z "$SFTP_PASSWORD" ]; then \
     echo "ERROR: SFTP_PASSWORD build argument is required." && \
@@ -11,14 +13,14 @@ RUN if [ -z "$SFTP_PASSWORD" ]; then \
 
 RUN apk add --no-cache openssh \
     && mkdir -p /home/sftp_user \
-    && adduser -h /home/sftp_user -s /sbin/nologin -D sftp_user \
-    && echo "sftp_user:${SFTP_PASSWORD}" | chpasswd \
+    && adduser -h /home/sftp_user -s /sbin/nologin -D "${SFTP_USERNAME}" \
+    && echo "${SFTP_USERNAME}:${SFTP_PASSWORD}" | chpasswd \
     && mkdir -p /etc/ssh/sshd_config.d
 
 # Configure SSHD
 RUN sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config \
     && echo "Subsystem sftp internal-sftp" > /etc/ssh/sshd_config.d/sftp.conf \
-    && echo "Match User sftp_user" >> /etc/ssh/sshd_config.d/sftp.conf \
+    && echo "Match User ${SFTP_USERNAME}" >> /etc/ssh/sshd_config.d/sftp.conf \
     && echo "  ChrootDirectory %h" >> /etc/ssh/sshd_config.d/sftp.conf \
     && echo "  ForceCommand internal-sftp" >> /etc/ssh/sshd_config.d/sftp.conf \
     && echo "  AllowTcpForwarding no" >> /etc/ssh/sshd_config.d/sftp.conf
