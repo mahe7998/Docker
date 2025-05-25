@@ -1,8 +1,8 @@
-import os
 import json
 import time
 import random
 import unittest
+import os
 from sftp_client import SFTPClient
 
 class TestSFTPClient(unittest.TestCase):
@@ -19,7 +19,6 @@ class TestSFTPClient(unittest.TestCase):
         cls.create_test_file("test_files/large_file.bin", 10 * 1024 * 1024)  # 10MB
         
         # Connect to SFTP server
-        import os
         password = os.environ.get('SFTP_PASSWORD')
         if not password:
             raise ValueError("SFTP_PASSWORD environment variable must be set to run tests")

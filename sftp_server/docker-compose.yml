@@ -2,13 +2,14 @@ version: '3'
 
 services:
   sftp:
-    build: 
+    build:
       context: .
       args:
-        - SFTP_PASSWORD=${SFTP_PASSWORD:?ERROR: SFTP_PASSWORD environment variable is required}
+        - SFTP_PASSWORD=${SFTP_PASSWORD}
+        - SFTP_USERNAME=${SFTP_USERNAME:-sftp_user}
     ports:
       - "2222:22"
     environment:
       - SFTP_ROOT_FOLDER=/sftp/data
     volumes:
-      - /Users/jmahe/sftp_data:/sftp/data
+      - /Users/${USER}/projects/python/docling_server/content:/sftp/data

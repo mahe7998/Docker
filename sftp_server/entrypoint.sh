@@ -14,6 +14,11 @@ mkdir -p "$SFTP_ROOT_FOLDER"
 rm -rf /home/sftp_user
 ln -s "$SFTP_ROOT_FOLDER" /home/sftp_user
 
+# Create a symlink from the root directory to the mounted volume
+# This ensures files uploaded to the root directory also appear in the mounted volume
+mkdir -p /sftp
+ln -sf "$SFTP_ROOT_FOLDER" /sftp/data
+
 # Fix ownership and permissions
 chown root:root /home/sftp_user
 chmod 755 /home/sftp_user
