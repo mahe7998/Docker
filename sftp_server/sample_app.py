@@ -184,7 +184,7 @@ def main():
     args = parser.parse_args()
     
     # Create and connect SFTP client
-    client = SFTPClient(args.host, args.port, args.username, args.password)
+    client = SFTPClient(args.host, args.port, args.username, args.password, private_key_path="ssh_keys/sftp_key")
     if not client.connect():
         print("Failed to connect to SFTP server")
         return 1
