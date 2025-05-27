@@ -15,15 +15,20 @@ RUN apk add --no-cache openssh \
     && mkdir -p /home/sftp_user \
     && adduser -h /home/sftp_user -s /sbin/nologin -D "${SFTP_USERNAME}" \
     && echo "${SFTP_USERNAME}:${SFTP_PASSWORD}" | chpasswd \
-    && mkdir -p /etc/ssh/sshd_config.d
+    && mkdir -p /etc/ssh/sshd_config.d \
+    && mkdir -p /home/${SFTP_USERNAME}/.ssh \
+    && chown ${SFTP_USERNAME}:${SFTP_USERNAME} /home/${SFTP_USERNAME}/.ssh \
+    && chmod 700 /home/${SFTP_USERNAME}/.ssh
 
 # Configure SSHD
-RUN sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config \
+RUN sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config \
+    && sed -i 's/#PubkeyAuthentication yes/PubkeyAuthentication yes/' /etc/ssh/sshd_config \
     && echo "Subsystem sftp internal-sftp" > /etc/ssh/sshd_config.d/sftp.conf \
     && echo "Match User ${SFTP_USERNAME}" >> /etc/ssh/sshd_config.d/sftp.conf \
     && echo "  ChrootDirectory %h" >> /etc/ssh/sshd_config.d/sftp.conf \
     && echo "  ForceCommand internal-sftp" >> /etc/ssh/sshd_config.d/sftp.conf \
-    && echo "  AllowTcpForwarding no" >> /etc/ssh/sshd_config.d/sftp.conf
+    && echo "  AllowTcpForwarding no" >> /etc/ssh/sshd_config.d/sftp.conf \
+    && echo "  AuthorizedKeysFile /home/${SFTP_USERNAME}/.ssh/authorized_keys" >> /etc/ssh/sshd_config.d/sftp.conf
 
 # Generate host keys
 RUN ssh-keygen -A
