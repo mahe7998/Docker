@@ -6,27 +6,37 @@ from stat import S_ISDIR
 from datetime import datetime
 
 class SFTPClient:
-    def __init__(self, host="localhost", port=2222, username="sftp_user", password=None):
+    def __init__(self, host="localhost", port=2222, username="sftp_user", password=None, private_key_path=None):
         """Initialize SFTP client with connection parameters."""
         self.host = host
         self.port = port
         self.username = username
         self.password = password
+        self.private_key_path = private_key_path
         self.transport = None
         self.sftp = None
         
     def connect(self):
         """Establish connection to SFTP server."""
         try:
-            if self.password is None:
-                # Try to get password from environment variable
-                import os
-                self.password = os.environ.get('SFTP_PASSWORD')
-                if self.password is None:
-                    raise ValueError("SFTP password not provided and SFTP_PASSWORD environment variable not set")
-            
             self.transport = paramiko.Transport((self.host, self.port))
-            self.transport.connect(username=self.username, password=self.password)
+            
+            # Try SSH key authentication first
+            if self.private_key_path:
+                private_key = paramiko.RSAKey.from_private_key_file(self.private_key_path)
+                self.transport.connect(username=self.username, pkey=private_key)
+            elif os.path.exists('ssh_keys/sftp_key'):
+                # Default to local SSH key if available
+                private_key = paramiko.RSAKey.from_private_key_file('ssh_keys/sftp_key')
+                self.transport.connect(username=self.username, pkey=private_key)
+            else:
+                # Fall back to password authentication
+                if self.password is None:
+                    self.password = os.environ.get('SFTP_PASSWORD')
+                    if self.password is None:
+                        raise ValueError("No SSH key found and no password provided")
+                self.transport.connect(username=self.username, password=self.password)
+            
             self.sftp = paramiko.SFTPClient.from_transport(self.transport)
             return True
         except Exception as e:
