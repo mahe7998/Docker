@@ -1,4 +1,3 @@
-version: '3'
 
 services:
   sftp:
@@ -13,3 +12,4 @@ services:
       - SFTP_ROOT_FOLDER=/sftp/data
     volumes:
       - /Users/${USER}/projects/python/docling_server/content:/sftp/data
+      - ./ssh_keys/authorized_keys:/tmp/authorized_keys:ro
