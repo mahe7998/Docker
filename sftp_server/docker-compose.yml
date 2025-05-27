@@ -13,3 +13,19 @@ services:
     volumes:
       - /Users/${USER}/projects/python/docling_server/content:/sftp/data
       - ./ssh_keys/authorized_keys:/tmp/authorized_keys:ro
+    depends_on:
+      - ssh-key-setup
+  
+  ssh-key-setup:
+    image: alpine:latest
+    command: |
+      sh -c "
+        mkdir -p /ssh_keys
+        if [ ! -f /ssh_keys/sftp_key ]; then
+          apk add --no-cache openssh-keygen
+          ssh-keygen -t rsa -b 4096 -f /ssh_keys/sftp_key -N '' -C 'sftp_client'
+          cp /ssh_keys/sftp_key.pub /ssh_keys/authorized_keys
+        fi
+      "
+    volumes:
+      - ./ssh_keys:/ssh_keys
