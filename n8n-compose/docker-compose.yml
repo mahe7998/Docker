@@ -69,10 +69,9 @@ services:
       - GENERIC_TIMEZONE=${GENERIC_TIMEZONE}
       - TZ=${GENERIC_TIMEZONE}
     volumes:
-      - n8n_data:/home/node/.n8n
+      - ./n8n_data:/home/node/.n8n
       - ./local-files:/files
 
 volumes:
-  n8n_data:
   tailscale_state:
   tailscale_run:
