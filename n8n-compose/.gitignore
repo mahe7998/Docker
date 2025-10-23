@@ -1,0 +1,29 @@
+# n8n runtime data
+n8n_data/database.sqlite
+n8n_data/*.log
+n8n_data/database.sqlite-*
+
+# Environment file with secrets (example file should be tracked)
+.env
+
+# Local files directory
+local-files/*
+!local-files/.gitkeep
+
+# Docker volumes
+volumes/
+
+# Tailscale certificate files (generated at runtime)
+*.crt
+*.key
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
