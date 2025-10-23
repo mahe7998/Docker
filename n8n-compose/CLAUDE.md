@@ -43,6 +43,51 @@ docker-compose up -d --force-recreate
 docker-compose ps
 ```
 
+## Recovery Scripts
+
+Two automated scripts are available for common recovery scenarios:
+
+### 1. Full Tailscale Recovery (`./recover-tailscale.sh`)
+Use when the Tailscale node has been disconnected from your tailnet (e.g., "404: node not found" errors).
+
+**What it does:**
+- Stops all services
+- Clears old Tailscale state volume
+- Restarts services with fresh authentication
+- Waits for connection and tests certificate provisioning
+- Shows status and connection info
+
+**When to use:**
+- Can't ping `n8n.tail60cd1d.ts.net`
+- Tailscale logs show "node not found" errors
+- Node was deleted from Tailscale admin console
+- After auth key expiration
+
+```bash
+./recover-tailscale.sh
+```
+
+### 2. Certificate Refresh (`./refresh-certificates.sh`)
+Use when HTTPS certificates are not working but Tailscale is connected.
+
+**What it does:**
+- Guides you through disabling/re-enabling HTTPS in Tailscale admin
+- Restarts Tailscale and Traefik containers
+- Tests certificate provisioning
+- Shows service status
+
+**When to use:**
+- Getting certificate errors in Traefik logs
+- HTTPS not working but node is connected
+- After enabling HTTPS certificates for the first time
+- Certificate issues after Tailscale account changes
+
+```bash
+./refresh-certificates.sh
+```
+
+**Note:** Some Tailscale account changes require disabling and re-enabling HTTPS certificates in the admin console to refresh the certificate capability for nodes.
+
 ## Architecture
 
 ### Three-Service Stack
