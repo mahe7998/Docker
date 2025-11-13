@@ -23,26 +23,35 @@ if [ ! -f ".env" ]; then
     exit 1
 fi
 
-# Step 1: Stop all services
-echo "Step 1: Stopping all services..."
+# Step 1: Logout from Tailscale before stopping
+echo "Step 1: Logging out of Tailscale and cleaning up..."
+if docker-compose ps | grep -q tailscale.*Up; then
+    echo "Logging out of Tailscale..."
+    docker-compose exec -T tailscale tailscale logout 2>/dev/null || echo "Already logged out or not connected"
+    sleep 2
+fi
+echo ""
+
+# Step 2: Stop all services
+echo "Step 2: Stopping all services..."
 docker-compose down
 echo "✓ Services stopped"
 echo ""
 
-# Step 2: Remove old Tailscale state
-echo "Step 2: Removing old Tailscale state volume..."
+# Step 3: Remove old Tailscale state
+echo "Step 3: Removing old Tailscale state volume..."
 docker volume rm n8n-compose_tailscale_state 2>/dev/null || echo "Volume already removed or doesn't exist"
 echo "✓ Tailscale state cleared"
 echo ""
 
-# Step 3: Start services
-echo "Step 3: Starting all services..."
+# Step 4: Start services
+echo "Step 4: Starting all services..."
 docker-compose up -d
 echo "✓ Services started"
 echo ""
 
-# Step 4: Wait for Tailscale to connect
-echo "Step 4: Waiting for Tailscale to connect..."
+# Step 5: Wait for Tailscale to connect
+echo "Step 5: Waiting for Tailscale to connect..."
 sleep 5
 
 # Check connection status
@@ -65,8 +74,8 @@ if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
 fi
 echo ""
 
-# Step 5: Test certificate provisioning
-echo "Step 5: Testing certificate provisioning..."
+# Step 6: Test certificate provisioning
+echo "Step 6: Testing certificate provisioning..."
 DOMAIN_NAME=$(grep "^DOMAIN_NAME=" .env | cut -d'=' -f2)
 
 if [ -z "$DOMAIN_NAME" ]; then
@@ -93,12 +102,12 @@ else
 fi
 echo ""
 
-# Step 6: Verify services
-echo "Step 6: Verifying all services..."
+# Step 7: Verify services
+echo "Step 7: Verifying all services..."
 docker-compose ps
 echo ""
 
-# Step 7: Show connection info
+# Step 8: Show connection info
 echo "========================================="
 echo "Recovery Complete!"
 echo "========================================="
@@ -107,6 +116,10 @@ echo "Tailscale Status:"
 docker-compose exec -T tailscale tailscale status | head -5
 echo ""
 echo "Access n8n at: https://$DOMAIN_NAME"
+echo ""
+echo "Note: Old n8n devices may still appear in your Tailscale admin console."
+echo "To remove them, go to: https://login.tailscale.com/admin/machines"
+echo "and delete any disconnected 'n8n' or 'n8n-1' devices."
 echo ""
 echo "To view logs:"
 echo "  docker-compose logs -f tailscale"

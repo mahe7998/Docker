@@ -1,7 +1,7 @@
 services:
   tailscale:
     image: tailscale/tailscale:latest
-    hostname: n8n
+    hostname: tailscale-n8n
     environment:
       - TS_AUTHKEY=${TS_AUTHKEY}
       - TS_STATE_DIR=/var/lib/tailscale
@@ -27,16 +27,20 @@ services:
       - tailscale
     command:
       - "--api.insecure=true"
+      - "--log.level=DEBUG"
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
       - "--entrypoints.web.address=:80"
       - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
       - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
       - "--entrypoints.websecure.address=:443"
-      - "--certificatesresolvers.tailscale.tailscale=true"
+      - "--providers.file.directory=/etc/traefik/dynamic"
+      - "--providers.file.watch=true"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - tailscale_run:/var/run/tailscale:ro
+      - tailscale_state:/var/lib/tailscale:ro
+      - ./traefik-dynamic.toml:/etc/traefik/dynamic/certs.toml:ro
 
   n8n:
     image: docker.n8n.io/n8nio/n8n
@@ -48,7 +52,6 @@ services:
       - traefik.http.routers.n8n.rule=Host(`${DOMAIN_NAME}`)
       - traefik.http.routers.n8n.tls=true
       - traefik.http.routers.n8n.entrypoints=web,websecure
-      - traefik.http.routers.n8n.tls.certresolver=tailscale
       - traefik.http.middlewares.n8n.headers.SSLRedirect=true
       - traefik.http.middlewares.n8n.headers.STSSeconds=315360000
       - traefik.http.middlewares.n8n.headers.browserXSSFilter=true
@@ -72,6 +75,116 @@ services:
       - ./n8n_data:/home/node/.n8n
       - ./local-files:/files
 
+  whisper-tailscale:
+    image: tailscale/tailscale:latest
+    hostname: whisper
+    environment:
+      - TS_AUTHKEY=${TS_AUTHKEY}
+      - TS_STATE_DIR=/var/lib/tailscale
+      - TS_SOCKET=/var/run/tailscale/tailscaled.sock
+      - TS_ACCEPT_DNS=false
+      - TS_HOSTNAME=whisper
+    volumes:
+      - whisper_tailscale_state:/var/lib/tailscale
+      - whisper_tailscale_run:/var/run/tailscale
+    ports:
+      - "9080:80"
+      - "9443:443"
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    restart: always
+
+  whisper-traefik:
+    image: "traefik"
+    restart: always
+    network_mode: "service:whisper-tailscale"
+    depends_on:
+      - whisper-tailscale
+    command:
+      - "--api.insecure=true"
+      - "--log.level=DEBUG"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.constraints=Label(`traefik.constraint`,`whisper`)"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+      - "--entrypoints.websecure.address=:443"
+      - "--providers.file.directory=/etc/traefik/dynamic"
+      - "--providers.file.watch=true"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - whisper_tailscale_run:/var/run/tailscale:ro
+      - whisper_tailscale_state:/var/lib/tailscale:ro
+      - ./whisper-traefik-dynamic.toml:/etc/traefik/dynamic/certs.toml:ro
+
+  whisper-db:
+    image: postgres:15-alpine
+    restart: always
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=whisper
+      - POSTGRES_USER=whisper
+      - POSTGRES_PASSWORD=${WHISPER_DB_PASSWORD}
+    volumes:
+      - whisper_db_data:/var/lib/postgresql/data
+      - ./whisper-project/init-db.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - whisper_net
+
+  whisper-backend:
+    build: ./whisper-project/whisper-backend
+    restart: always
+    depends_on:
+      - whisper-db
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://whisper:${WHISPER_DB_PASSWORD}@whisper-db:5432/whisper
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - PYTORCH_ENABLE_MPS_FALLBACK=1
+      - HF_HOME=/root/.cache/huggingface
+      - HF_TOKEN=${HF_TOKEN}
+    volumes:
+      - whisper_audio:/audio
+      - ${HOME}/.cache/huggingface:/root/.cache/huggingface
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - whisper_net
+      - default
+
+  whisper-frontend:
+    build: ./whisper-project/whisper-frontend
+    restart: always
+    depends_on:
+      - whisper-backend
+    labels:
+      - traefik.enable=true
+      - traefik.constraint=whisper
+      - traefik.http.routers.whisper.rule=Host(`whisper.tail60cd1d.ts.net`)
+      - traefik.http.routers.whisper.tls=true
+      - traefik.http.routers.whisper.entrypoints=web,websecure
+      - traefik.http.middlewares.whisper.headers.SSLRedirect=true
+      - traefik.http.middlewares.whisper.headers.STSSeconds=315360000
+      - traefik.http.middlewares.whisper.headers.browserXSSFilter=true
+      - traefik.http.middlewares.whisper.headers.contentTypeNosniff=true
+      - traefik.http.middlewares.whisper.headers.forceSTSHeader=true
+      - traefik.http.middlewares.whisper.headers.SSLHost=whisper.tail60cd1d.ts.net
+      - traefik.http.middlewares.whisper.headers.STSIncludeSubdomains=true
+      - traefik.http.middlewares.whisper.headers.STSPreload=true
+      - traefik.http.routers.whisper.middlewares=whisper@docker
+      - traefik.http.services.whisper.loadbalancer.server.port=80
+    networks:
+      - default
+
 volumes:
   tailscale_state:
   tailscale_run:
+  whisper_tailscale_state:
+  whisper_tailscale_run:
+  whisper_db_data:
+  whisper_audio:
+
+networks:
+  whisper_net:
