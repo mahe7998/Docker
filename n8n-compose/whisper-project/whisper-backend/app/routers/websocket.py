@@ -1,5 +1,12 @@
 """
 WebSocket router for real-time audio streaming and transcription
+
+Implements sliding window algorithm with 50% overlap:
+- Frontend sends 3-second audio chunks
+- Backend accumulates 2 chunks (6 seconds) before transcribing
+- Keeps last chunk as overlap for next window
+- Deduplicates segments from overlapping regions
+- Provides better accuracy by giving WhisperX context at window boundaries
 """
 import logging
 import asyncio
@@ -22,14 +29,17 @@ router = APIRouter(tags=["websocket"])
 
 class AudioBuffer:
     """
-    Buffer for accumulating audio chunks before transcription
+    Buffer for accumulating audio chunks with sliding window overlap
     """
 
-    def __init__(self, sample_rate: int = 16000):
+    def __init__(self, sample_rate: int = 16000, chunk_size_seconds: float = 3.0):
         self.chunks: List[bytes] = []
         self.sample_rate = sample_rate
+        self.chunk_size_seconds = chunk_size_seconds
         self.total_duration = 0.0
-        self.chunk_duration_threshold = 5.0  # Transcribe every 5 seconds
+        self.chunk_duration_threshold = chunk_size_seconds * 2  # Need 2 chunks (6 seconds)
+        self.last_transcribed_end_time = 0.0  # Track absolute time position in recording
+        self.window_count = 0  # Track number of windows processed
 
     def add_chunk(self, audio_data: bytes, duration: float):
         """
@@ -45,15 +55,33 @@ class AudioBuffer:
     def should_transcribe(self) -> bool:
         """
         Check if buffer has enough audio to transcribe
+        Need at least 2 chunks for sliding window
 
         Returns:
             True if ready to transcribe
         """
         return self.total_duration >= self.chunk_duration_threshold
 
+    def get_sliding_window_audio(self) -> bytes:
+        """
+        Get audio for current sliding window (last 2 chunks)
+
+        Returns:
+            Combined audio bytes from last 2 chunks
+        """
+        if not self.chunks:
+            return b""
+
+        if len(self.chunks) < 2:
+            # First window - use whatever we have
+            return b"".join(self.chunks)
+
+        # Return last 2 chunks (6 seconds total for 50% overlap)
+        return b"".join(self.chunks[-2:])
+
     def get_combined_audio(self) -> bytes:
         """
-        Combine all chunks into single audio file
+        Combine all chunks into single audio file (for final transcription)
 
         Returns:
             Combined audio bytes
@@ -65,16 +93,61 @@ class AudioBuffer:
         combined = b"".join(self.chunks)
         return combined
 
+    def keep_last_chunk(self):
+        """
+        Keep only the last chunk for next sliding window
+        This creates the overlap - last chunk becomes first chunk of next window
+        """
+        if len(self.chunks) >= 2:
+            self.chunks = self.chunks[-1:]
+            self.total_duration = self.chunk_size_seconds
+            self.window_count += 1
+        # If only 1 chunk, keep it
+
     def clear(self):
-        """Clear buffer"""
+        """Clear buffer completely"""
         self.chunks = []
         self.total_duration = 0.0
+        # Don't reset last_transcribed_end_time - we need it for absolute timestamps
+
+
+def filter_new_segments(
+    segments: List[TranscriptionSegment],
+    overlap_threshold: float,
+    absolute_time_offset: float
+) -> List[TranscriptionSegment]:
+    """
+    Filter segments to only include new portions (after overlap region)
+    and adjust timestamps to be absolute from recording start
+
+    Args:
+        segments: All segments from current transcription window
+        overlap_threshold: Time threshold - segments starting before this are duplicates
+        absolute_time_offset: Offset to add to timestamps for absolute time
+
+    Returns:
+        New segments with adjusted absolute timestamps
+    """
+    new_segments = []
+    for seg in segments:
+        # Only keep segments that start at or after the overlap threshold
+        if seg.start >= overlap_threshold:
+            # Adjust timestamps to be absolute from recording start
+            adjusted_segment = TranscriptionSegment(
+                speaker=seg.speaker,
+                text=seg.text,
+                start=seg.start + absolute_time_offset,
+                end=seg.end + absolute_time_offset,
+            )
+            new_segments.append(adjusted_segment)
+
+    return new_segments
 
 
 @router.websocket("/ws/transcribe")
 async def websocket_transcribe(websocket: WebSocket):
     """
-    WebSocket endpoint for real-time audio transcription
+    WebSocket endpoint for real-time audio transcription with sliding window
 
     Protocol:
     - Client sends: {"type": "audio_chunk", "data": <base64_audio>, "duration": <seconds>}
@@ -82,6 +155,12 @@ async def websocket_transcribe(websocket: WebSocket):
     - Server sends: {"type": "transcription", "segments": [...]}
     - Server sends: {"type": "status", "message": "..."}
     - Server sends: {"type": "error", "message": "..."}
+
+    Sliding Window Behavior:
+    - Accumulates 2 chunks (6s) before first transcription
+    - Subsequent transcriptions every 3s with 50% overlap
+    - Automatically deduplicates overlapping segments
+    - Maintains absolute timestamps across all segments
     """
     await websocket.accept()
     logger.info("WebSocket connection established")
@@ -125,41 +204,69 @@ async def websocket_transcribe(websocket: WebSocket):
 
                     logger.info(f"Received audio chunk: {len(audio_bytes)} bytes, {duration}s")
 
-                    # Check if we should transcribe
+                    # Check if we should transcribe (have 2 chunks = 6 seconds)
                     if audio_buffer.should_transcribe():
                         await websocket.send_json({
                             "type": "status",
                             "message": "Transcribing..."
                         })
 
-                        # Save combined audio to file
-                        combined_audio = audio_buffer.get_combined_audio()
-                        audio_filename = f"{session_id}_{int(audio_buffer.total_duration)}.wav"
+                        # Get sliding window audio (last 2 chunks)
+                        window_audio = audio_buffer.get_sliding_window_audio()
+                        audio_filename = f"{session_id}_window_{audio_buffer.window_count}.wav"
                         audio_path = audio_dir / audio_filename
 
                         # Write audio file
                         with open(audio_path, "wb") as f:
-                            f.write(combined_audio)
+                            f.write(window_audio)
 
                         # Transcribe
                         try:
                             segments = await whisper_service.transcribe_audio(str(audio_path))
 
-                            # Send transcription results
-                            await websocket.send_json({
-                                "type": "transcription",
-                                "segments": [
-                                    {
-                                        "speaker": seg.speaker,
-                                        "text": seg.text,
-                                        "start": seg.start,
-                                        "end": seg.end,
-                                    }
-                                    for seg in segments
-                                ],
-                            })
+                            # Determine which segments are new (deduplication)
+                            if audio_buffer.window_count > 0:
+                                # Not first window - filter out overlapping segments
+                                # First chunk (3s) is overlap, only keep segments from second chunk
+                                overlap_threshold = audio_buffer.chunk_size_seconds
+                                new_segments = filter_new_segments(
+                                    segments,
+                                    overlap_threshold,
+                                    audio_buffer.last_transcribed_end_time
+                                )
+                                logger.info(
+                                    f"Window {audio_buffer.window_count}: "
+                                    f"Filtered {len(segments)} -> {len(new_segments)} new segments "
+                                    f"(overlap threshold: {overlap_threshold}s)"
+                                )
+                            else:
+                                # First window - send all segments with absolute timestamps
+                                new_segments = filter_new_segments(
+                                    segments,
+                                    0.0,  # No overlap on first window
+                                    0.0   # No time offset
+                                )
+                                logger.info(f"First window: {len(new_segments)} segments")
 
-                            logger.info(f"Sent transcription: {len(segments)} segments")
+                            # Send only new transcription segments
+                            if new_segments:
+                                await websocket.send_json({
+                                    "type": "transcription",
+                                    "segments": [
+                                        {
+                                            "speaker": seg.speaker,
+                                            "text": seg.text,
+                                            "start": seg.start,
+                                            "end": seg.end,
+                                        }
+                                        for seg in new_segments
+                                    ],
+                                })
+
+                                logger.info(f"Sent {len(new_segments)} new segments")
+
+                                # Update absolute time tracker
+                                audio_buffer.last_transcribed_end_time += audio_buffer.chunk_size_seconds
 
                         except Exception as e:
                             logger.error(f"Transcription error: {e}")
@@ -168,8 +275,8 @@ async def websocket_transcribe(websocket: WebSocket):
                                 "message": f"Transcription failed: {str(e)}"
                             })
 
-                        # Clear buffer
-                        audio_buffer.clear()
+                        # Keep last chunk for next sliding window (creates overlap)
+                        audio_buffer.keep_last_chunk()
 
                 except Exception as e:
                     logger.error(f"Error processing audio chunk: {e}")
@@ -188,30 +295,61 @@ async def websocket_transcribe(websocket: WebSocket):
                         "message": "Processing final audio..."
                     })
 
-                    # Save and transcribe remaining audio
-                    combined_audio = audio_buffer.get_combined_audio()
+                    # Get all remaining audio (may be 1 or 2 chunks)
+                    remaining_audio = audio_buffer.get_combined_audio()
                     audio_filename = f"{session_id}_final.wav"
                     audio_path = audio_dir / audio_filename
 
                     with open(audio_path, "wb") as f:
-                        f.write(combined_audio)
+                        f.write(remaining_audio)
 
                     try:
                         segments = await whisper_service.transcribe_audio(str(audio_path))
 
-                        await websocket.send_json({
-                            "type": "transcription",
-                            "segments": [
-                                {
-                                    "speaker": seg.speaker,
-                                    "text": seg.text,
-                                    "start": seg.start,
-                                    "end": seg.end,
-                                }
-                                for seg in segments
-                            ],
-                            "final": True,
-                        })
+                        # Filter final segments - if we have a previous window,
+                        # first chunk is overlap
+                        if audio_buffer.window_count > 0 and len(audio_buffer.chunks) >= 2:
+                            # Multiple chunks remaining - first is overlap
+                            overlap_threshold = audio_buffer.chunk_size_seconds
+                            new_segments = filter_new_segments(
+                                segments,
+                                overlap_threshold,
+                                audio_buffer.last_transcribed_end_time
+                            )
+                            logger.info(f"Final window: Filtered {len(segments)} -> {len(new_segments)} new segments")
+                        elif audio_buffer.window_count > 0:
+                            # Only one chunk remaining - it's all overlap from previous window
+                            # So we already sent this in the last window
+                            new_segments = []
+                            logger.info("Final window: Single chunk is overlap, no new segments")
+                        else:
+                            # First and only window - send everything
+                            new_segments = filter_new_segments(segments, 0.0, 0.0)
+                            logger.info(f"Final window (first): {len(new_segments)} segments")
+
+                        # Send final segments if any
+                        if new_segments:
+                            await websocket.send_json({
+                                "type": "transcription",
+                                "segments": [
+                                    {
+                                        "speaker": seg.speaker,
+                                        "text": seg.text,
+                                        "start": seg.start,
+                                        "end": seg.end,
+                                    }
+                                    for seg in new_segments
+                                ],
+                                "final": True,
+                            })
+                            logger.info(f"Sent {len(new_segments)} final segments")
+                        else:
+                            # No new segments, just send final marker
+                            await websocket.send_json({
+                                "type": "transcription",
+                                "segments": [],
+                                "final": True,
+                            })
 
                     except Exception as e:
                         logger.error(f"Final transcription error: {e}")

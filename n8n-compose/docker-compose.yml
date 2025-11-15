@@ -134,31 +134,32 @@ services:
     networks:
       - whisper_net
 
-  whisper-backend:
-    build: ./whisper-project/whisper-backend
-    restart: always
-    depends_on:
-      - whisper-db
-    environment:
-      - DATABASE_URL=postgresql+asyncpg://whisper:${WHISPER_DB_PASSWORD}@whisper-db:5432/whisper
-      - OLLAMA_BASE_URL=http://host.docker.internal:11434
-      - PYTORCH_ENABLE_MPS_FALLBACK=1
-      - HF_HOME=/root/.cache/huggingface
-      - HF_TOKEN=${HF_TOKEN}
-    volumes:
-      - whisper_audio:/audio
-      - ${HOME}/.cache/huggingface:/root/.cache/huggingface
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    networks:
-      - whisper_net
-      - default
+  # whisper-backend:
+  #   build: ./whisper-project/whisper-backend
+  #   restart: always
+  #   depends_on:
+  #     - whisper-db
+  #   environment:
+  #     - DATABASE_URL=postgresql+asyncpg://whisper:${WHISPER_DB_PASSWORD}@whisper-db:5432/whisper
+  #     - OLLAMA_BASE_URL=http://host.docker.internal:11434
+  #     - PYTORCH_ENABLE_MPS_FALLBACK=1
+  #     - HF_HOME=/root/.cache/huggingface
+  #     - HF_TOKEN=${HF_TOKEN}
+  #   volumes:
+  #     - whisper_audio:/audio
+  #     - ${HOME}/.cache/huggingface:/root/.cache/huggingface
+  #   extra_hosts:
+  #     - "host.docker.internal:host-gateway"
+  #   networks:
+  #     - whisper_net
+  #     - default
+
+  # NOTE: whisper-backend now runs on host Mac with MLX acceleration
+  # Start with: cd ~/projects/python/mlx_whisper && ./start.sh
 
   whisper-frontend:
     build: ./whisper-project/whisper-frontend
     restart: always
-    depends_on:
-      - whisper-backend
     labels:
       - traefik.enable=true
       - traefik.constraint=whisper

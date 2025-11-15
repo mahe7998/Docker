@@ -10,31 +10,48 @@ import './App.css';
 function App() {
   const [transcriptionData, setTranscriptionData] = useState(null);
   const [statusMessage, setStatusMessage] = useState('');
+  const [isRecording, setIsRecording] = useState(false);
   const editorRef = useRef(null);
+
+  // Handle recording state changes
+  const handleRecordingStateChange = (recording) => {
+    setIsRecording(recording);
+    if (recording) {
+      // Clear previous transcription when starting new recording
+      setTranscriptionData(null);
+    }
+  };
 
   // Handle incoming transcription from WebSocket
   const handleTranscription = (data) => {
     console.log('Received transcription data:', data);
 
-    // Check if this is new data or appending to existing
+    // With the new sliding window approach, we always append new text
+    // The backend handles deduplication and only sends new portions
     if (data.segments && data.segments.length > 0) {
       setTranscriptionData((prev) => {
         if (!prev) {
           // First transcription
           return {
             segments: data.segments,
-            markdown: data.markdown || '',
-            duration: data.duration || 0,
+            text: data.text || '',
+            final: data.final || false,
           };
         } else {
-          // Append new segments
+          // Append new segments (backend already deduplicated)
           return {
             segments: [...prev.segments, ...data.segments],
-            markdown: prev.markdown + '\n\n' + (data.markdown || ''),
-            duration: data.duration || prev.duration,
+            text: prev.text + (prev.text && data.text ? ' ' : '') + (data.text || ''),
+            final: data.final || false,
           };
         }
       });
+    } else if (data.final && data.segments && data.segments.length === 0) {
+      // Empty final message - just mark as final
+      setTranscriptionData((prev) => ({
+        ...prev,
+        final: true,
+      }));
     }
   };
 
@@ -73,6 +90,7 @@ function App() {
           <AudioRecorder
             onTranscription={handleTranscription}
             onStatus={handleStatus}
+            onRecordingStateChange={handleRecordingStateChange}
           />
 
           {/* Transcription Editor */}

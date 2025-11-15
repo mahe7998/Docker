@@ -9,11 +9,11 @@ export default defineConfig({
     port: 3000,
     proxy: {
       '/api': {
-        target: 'http://whisper-backend:8000',
+        target: 'http://host.docker.internal:8000',
         changeOrigin: true,
       },
       '/ws': {
-        target: 'ws://whisper-backend:8000',
+        target: 'ws://host.docker.internal:8000',
         ws: true,
         changeOrigin: true,
       },

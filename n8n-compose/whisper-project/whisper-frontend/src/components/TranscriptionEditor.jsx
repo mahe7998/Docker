@@ -2,7 +2,7 @@
  * TranscriptionEditor Component
  * TipTap-based rich text editor with markdown support and AI review
  */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
@@ -38,20 +38,41 @@ const TranscriptionEditor = ({ transcriptionData, onSave }) => {
     },
   });
 
+  // Track the last text we've added to avoid duplicates
+  const lastTextRef = useRef('');
+
   // Load transcription data into editor
   useEffect(() => {
     if (transcriptionData && editor) {
-      const { segments, markdown } = transcriptionData;
+      const { text, segments, markdown } = transcriptionData;
 
-      // Use markdown if available, otherwise build from segments
-      let content = markdown || '';
-      if (!content && segments) {
-        content = segments.map(seg =>
-          `**${seg.speaker}**: ${seg.text}`
-        ).join('\n\n');
+      // Use text field (from sliding window approach), or markdown, or build from segments
+      let fullText = text || markdown || '';
+      if (!fullText && segments) {
+        // No speaker labels - just concatenate text
+        fullText = segments.map(seg => seg.text).join(' ');
       }
 
-      editor.commands.setContent(content);
+      // Only update if text has changed and is longer (appending scenario)
+      if (fullText && fullText !== lastTextRef.current) {
+        // If this is the first text or current editor is empty, set content
+        if (!lastTextRef.current || !editor.getText().trim()) {
+          editor.commands.setContent(fullText);
+          lastTextRef.current = fullText;
+        }
+        // If text has grown, append only the new portion
+        else if (fullText.length > lastTextRef.current.length && fullText.startsWith(lastTextRef.current)) {
+          const newText = fullText.substring(lastTextRef.current.length);
+          // Insert at the end
+          editor.commands.insertContentAt(editor.state.doc.content.size, newText);
+          lastTextRef.current = fullText;
+        }
+        // Otherwise, replace everything (e.g., new recording session)
+        else {
+          editor.commands.setContent(fullText);
+          lastTextRef.current = fullText;
+        }
+      }
 
       // Set title if not already set
       if (!title) {
@@ -59,19 +80,18 @@ const TranscriptionEditor = ({ transcriptionData, onSave }) => {
         setTitle(`Transcription ${now.toLocaleString()}`);
       }
     }
-  }, [transcriptionData, editor]);
+  }, [transcriptionData, editor, title]);
 
   // Append new transcription segments
   const appendSegments = (segments) => {
     if (!editor || !segments) return;
 
-    const content = segments.map(seg =>
-      `**${seg.speaker}**: ${seg.text}`
-    ).join('\n\n');
+    // No speaker labels - just concatenate text
+    const content = segments.map(seg => seg.text).join(' ');
 
     // Append to existing content
     const currentContent = editor.getHTML();
-    editor.commands.setContent(currentContent + '\n\n' + content);
+    editor.commands.setContent(currentContent + ' ' + content);
   };
 
   // AI Review Actions

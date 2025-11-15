@@ -6,7 +6,7 @@ import { useState, useRef, useEffect } from 'react';
 import wsClient from '../services/websocket';
 import './AudioRecorder.css';
 
-const AudioRecorder = ({ onTranscription, onStatus }) => {
+const AudioRecorder = ({ onTranscription, onStatus, onRecordingStateChange }) => {
   const [isRecording, setIsRecording] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
@@ -16,6 +16,14 @@ const AudioRecorder = ({ onTranscription, onStatus }) => {
   const audioChunksRef = useRef([]);
   const timerIntervalRef = useRef(null);
   const streamRef = useRef(null);
+  const disconnectTimeoutRef = useRef(null);
+
+  // Notify parent when recording state changes
+  useEffect(() => {
+    if (onRecordingStateChange) {
+      onRecordingStateChange(isRecording);
+    }
+  }, [isRecording, onRecordingStateChange]);
 
   // Setup WebSocket listeners
   useEffect(() => {
@@ -24,7 +32,23 @@ const AudioRecorder = ({ onTranscription, onStatus }) => {
       if (onTranscription) {
         onTranscription(data);
       }
-      setStatus('Transcribed');
+
+      // Update status based on transcription type
+      if (data.streaming) {
+        setStatus('Streaming transcription...');
+      } else if (data.final) {
+        setStatus('Final transcription received');
+      } else {
+        setStatus('Transcribed');
+      }
+
+      // If this is the final transcription, disconnect WebSocket
+      if (data.final) {
+        console.log('Received final transcription, disconnecting WebSocket');
+        setTimeout(() => {
+          wsClient.disconnect();
+        }, 500); // Short delay to ensure message is processed
+      }
     };
 
     const handleStatus = (data) => {
@@ -38,7 +62,8 @@ const AudioRecorder = ({ onTranscription, onStatus }) => {
     const handleError = (data) => {
       console.error('WebSocket error:', data);
       setStatus(`Error: ${data.message}`);
-      stopRecording();
+      // Don't auto-stop on errors - let user decide whether to stop
+      // stopRecording();
     };
 
     wsClient.on('transcription', handleTranscription);
@@ -118,16 +143,8 @@ const AudioRecorder = ({ onTranscription, onStatus }) => {
   // Stop recording
   const stopRecording = () => {
     try {
-      // Stop MediaRecorder
-      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-        mediaRecorderRef.current.stop();
-      }
-
-      // Stop all audio tracks
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((track) => track.stop());
-        streamRef.current = null;
-      }
+      setIsRecording(false);
+      setStatus('Processing final audio...');
 
       // Clear timer
       if (timerIntervalRef.current) {
@@ -135,16 +152,33 @@ const AudioRecorder = ({ onTranscription, onStatus }) => {
         timerIntervalRef.current = null;
       }
 
-      // Signal end of recording to server
-      wsClient.endRecording();
+      // Setup handler for final data chunk
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        const mediaRecorder = mediaRecorderRef.current;
 
-      setIsRecording(false);
-      setStatus('Processing final audio...');
+        // Wait for final ondataavailable event before signaling end
+        mediaRecorder.onstop = () => {
+          console.log('MediaRecorder stopped, sending end recording signal');
 
-      // Disconnect WebSocket after a delay to allow final processing
-      setTimeout(() => {
-        wsClient.disconnect();
-      }, 5000);
+          // Stop all audio tracks
+          if (streamRef.current) {
+            streamRef.current.getTracks().forEach((track) => track.stop());
+            streamRef.current = null;
+          }
+
+          // Now signal end of recording after all chunks are sent
+          // Add small delay to ensure final chunk is sent
+          setTimeout(() => {
+            wsClient.endRecording();
+          }, 100);
+        };
+
+        // Stop MediaRecorder - this will trigger onstop after final ondataavailable
+        mediaRecorder.stop();
+      } else {
+        // No MediaRecorder, just end recording
+        wsClient.endRecording();
+      }
 
     } catch (error) {
       console.error('Error stopping recording:', error);
