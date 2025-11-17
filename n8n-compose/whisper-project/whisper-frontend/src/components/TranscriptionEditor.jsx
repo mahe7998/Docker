@@ -53,22 +53,32 @@ const TranscriptionEditor = ({ transcriptionData, onSave }) => {
         fullText = segments.map(seg => seg.text).join(' ');
       }
 
-      // Only update if text has changed and is longer (appending scenario)
+      // Debug logging
+      console.log('TranscriptionEditor received:', {
+        fullTextLength: fullText.length,
+        lastTextLength: lastTextRef.current.length,
+        fullTextPreview: fullText.substring(0, 100),
+        isNew: fullText !== lastTextRef.current
+      });
+
+      // Only update if text has changed
       if (fullText && fullText !== lastTextRef.current) {
-        // If this is the first text or current editor is empty, set content
-        if (!lastTextRef.current || !editor.getText().trim()) {
+        if (!lastTextRef.current) {
+          // First time - set all content
+          console.log('First transcription - setting initial content');
           editor.commands.setContent(fullText);
           lastTextRef.current = fullText;
-        }
-        // If text has grown, append only the new portion
-        else if (fullText.length > lastTextRef.current.length && fullText.startsWith(lastTextRef.current)) {
-          const newText = fullText.substring(lastTextRef.current.length);
-          // Insert at the end
-          editor.commands.insertContentAt(editor.state.doc.content.size, newText);
+        } else if (fullText.length > lastTextRef.current.length) {
+          // Append only new content
+          const newContent = fullText.substring(lastTextRef.current.length);
+          console.log('Appending new content:', newContent.substring(0, 50));
+
+          // Move to end and insert new content
+          editor.chain().focus('end').insertContent(newContent).run();
           lastTextRef.current = fullText;
-        }
-        // Otherwise, replace everything (e.g., new recording session)
-        else {
+        } else {
+          // Text is shorter - new session, replace everything
+          console.log('New session - replacing all content');
           editor.commands.setContent(fullText);
           lastTextRef.current = fullText;
         }

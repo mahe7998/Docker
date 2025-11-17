@@ -2,7 +2,7 @@
  * Main App Component
  * Combines AudioRecorder and TranscriptionEditor
  */
-import { useState, useRef } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import AudioRecorder from './components/AudioRecorder';
 import TranscriptionEditor from './components/TranscriptionEditor';
 import './App.css';
@@ -14,17 +14,22 @@ function App() {
   const editorRef = useRef(null);
 
   // Handle recording state changes
-  const handleRecordingStateChange = (recording) => {
+  // useCallback ensures this function reference stays stable across re-renders
+  const handleRecordingStateChange = useCallback((recording) => {
     setIsRecording(recording);
     if (recording) {
       // Clear previous transcription when starting new recording
       setTranscriptionData(null);
     }
-  };
+  }, []);
 
   // Handle incoming transcription from WebSocket
   const handleTranscription = (data) => {
-    console.log('Received transcription data:', data);
+    console.log('App.jsx received transcription:', {
+      dataText: data.text,
+      dataTextLength: data.text?.length,
+      segmentsCount: data.segments?.length
+    });
 
     // With the new sliding window approach, we always append new text
     // The backend handles deduplication and only sends new portions
@@ -32,6 +37,7 @@ function App() {
       setTranscriptionData((prev) => {
         if (!prev) {
           // First transcription
+          console.log('App.jsx: First transcription, text:', data.text);
           return {
             segments: data.segments,
             text: data.text || '',
@@ -39,9 +45,12 @@ function App() {
           };
         } else {
           // Append new segments (backend already deduplicated)
+          const newText = prev.text + (prev.text && data.text ? ' ' : '') + (data.text || '');
+          console.log('App.jsx: Appending text. Previous length:', prev.text.length, 'New length:', newText.length);
+          console.log('App.jsx: Accumulated text preview:', newText.substring(0, 150));
           return {
             segments: [...prev.segments, ...data.segments],
-            text: prev.text + (prev.text && data.text ? ' ' : '') + (data.text || ''),
+            text: newText,
             final: data.final || false,
           };
         }
