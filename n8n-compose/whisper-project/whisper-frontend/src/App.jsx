@@ -5,12 +5,15 @@
 import { useState, useRef, useCallback } from 'react';
 import AudioRecorder from './components/AudioRecorder';
 import TranscriptionEditor from './components/TranscriptionEditor';
+import TranscriptionSelector from './components/TranscriptionSelector';
 import './App.css';
 
 function App() {
   const [transcriptionData, setTranscriptionData] = useState(null);
   const [statusMessage, setStatusMessage] = useState('');
   const [isRecording, setIsRecording] = useState(false);
+  const [selectedTranscription, setSelectedTranscription] = useState(null);
+  const [isModified, setIsModified] = useState(false);
   const editorRef = useRef(null);
 
   // Handle recording state changes
@@ -73,10 +76,44 @@ function App() {
   const handleSave = (data) => {
     console.log('Transcription saved:', data);
     setStatusMessage('Transcription saved to database!');
+    setIsModified(false);  // Reset modification flag after save
+    setSelectedTranscription(data);  // Update selected transcription with saved data
 
     setTimeout(() => {
       setStatusMessage('');
     }, 3000);
+  };
+
+  // Handle transcription selection from dropdown
+  const handleTranscriptionSelect = async (transcription) => {
+    if (transcription) {
+      setSelectedTranscription(transcription);
+      setTranscriptionData({
+        text: transcription.current_content_md || transcription.content_md,
+        segments: [],
+        final: true,
+      });
+      setIsModified(false);
+    } else {
+      // Clear selection
+      setSelectedTranscription(null);
+      setTranscriptionData(null);
+      setIsModified(false);
+    }
+  };
+
+  // Handle transcription deletion
+  const handleDelete = () => {
+    setSelectedTranscription(null);
+    setTranscriptionData(null);
+    setIsModified(false);
+    setStatusMessage('Transcription deleted');
+    setTimeout(() => setStatusMessage(''), 3000);
+  };
+
+  // Handle content modification
+  const handleContentChange = () => {
+    setIsModified(true);
   };
 
   return (
@@ -95,6 +132,13 @@ function App() {
 
       <main className="app-main">
         <div className="container">
+          {/* Transcription Selector */}
+          <TranscriptionSelector
+            onSelect={handleTranscriptionSelect}
+            disabled={isRecording}
+            selectedId={selectedTranscription?.id}
+          />
+
           {/* Audio Recorder */}
           <AudioRecorder
             onTranscription={handleTranscription}
@@ -106,7 +150,12 @@ function App() {
           <TranscriptionEditor
             ref={editorRef}
             transcriptionData={transcriptionData}
+            selectedTranscription={selectedTranscription}
+            isRecording={isRecording}
+            isModified={isModified}
             onSave={handleSave}
+            onDelete={handleDelete}
+            onContentChange={handleContentChange}
           />
         </div>
       </main>

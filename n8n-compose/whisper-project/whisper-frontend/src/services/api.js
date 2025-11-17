@@ -29,10 +29,26 @@ export const transcriptionAPI = {
   },
 
   /**
+   * Get transcription summaries (for dropdown)
+   */
+  getSummaries: async () => {
+    const response = await api.get('/transcriptions/summaries');
+    return response.data;
+  },
+
+  /**
    * Get a specific transcription by ID
    */
   get: async (id) => {
     const response = await api.get(`/transcriptions/${id}`);
+    return response.data;
+  },
+
+  /**
+   * Get transcription modification history
+   */
+  getHistory: async (id) => {
+    const response = await api.get(`/transcriptions/${id}/history`);
     return response.data;
   },
 
@@ -101,5 +117,14 @@ export const healthCheck = async () => {
   const response = await api.get('/health', { baseURL: '/' });
   return response.data;
 };
+
+/**
+ * Convenience functions for components
+ */
+export const fetchTranscriptionSummaries = () => transcriptionAPI.getSummaries();
+export const fetchTranscriptionById = (id) => transcriptionAPI.get(id);
+export const saveTranscription = (data) => transcriptionAPI.create(data);
+export const updateTranscription = (id, data) => transcriptionAPI.update(id, data);
+export const deleteTranscription = (id) => transcriptionAPI.delete(id);
 
 export default api;

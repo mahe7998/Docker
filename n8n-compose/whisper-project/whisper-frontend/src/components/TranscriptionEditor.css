@@ -67,6 +67,28 @@
   background-color: #7c3aed;
 }
 
+.btn-danger {
+  background-color: #dc3545;
+  color: white;
+  border: none;
+  padding: var(--spacing-sm) var(--spacing-lg);
+  font-size: 1rem;
+  font-weight: 600;
+  border-radius: var(--border-radius);
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background-color: #c82333;
+}
+
+.btn-danger:disabled {
+  background-color: #6c757d;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
 .editor-container {
   background-color: var(--color-bg);
   border: 1px solid var(--color-border);

@@ -1,0 +1,60 @@
+.transcription-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #dee2e6;
+}
+
+.transcription-selector label {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: #495057;
+}
+
+.transcription-selector select {
+  padding: 0.6rem;
+  font-size: 0.95rem;
+  border: 2px solid #ced4da;
+  border-radius: 6px;
+  background-color: white;
+  cursor: pointer;
+  transition: border-color 0.15s ease-in-out;
+}
+
+.transcription-selector select:hover:not(:disabled) {
+  border-color: #80bdff;
+}
+
+.transcription-selector select:focus {
+  outline: none;
+  border-color: #007bff;
+  box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+}
+
+.transcription-selector select.disabled {
+  background-color: #e9ecef;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.transcription-selector .loading-indicator {
+  font-size: 0.875rem;
+  color: #6c757d;
+  font-style: italic;
+}
+
+.transcription-selector .error-message {
+  font-size: 0.875rem;
+  color: #dc3545;
+  font-weight: 500;
+}
+
+.transcription-selector .disabled-message {
+  font-size: 0.875rem;
+  color: #6c757d;
+  font-style: italic;
+}

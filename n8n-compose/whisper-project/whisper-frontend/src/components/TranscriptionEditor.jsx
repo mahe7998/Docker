@@ -12,7 +12,15 @@ import { transcriptionAPI } from '../services/api';
 import ReactMarkdown from 'react-markdown';
 import './TranscriptionEditor.css';
 
-const TranscriptionEditor = ({ transcriptionData, onSave }) => {
+const TranscriptionEditor = ({
+  transcriptionData,
+  selectedTranscription,
+  isRecording,
+  isModified,
+  onSave,
+  onDelete,
+  onContentChange
+}) => {
   const [title, setTitle] = useState('');
   const [showPreview, setShowPreview] = useState(false);
   const [isAiProcessing, setIsAiProcessing] = useState(false);
@@ -38,14 +46,23 @@ const TranscriptionEditor = ({ transcriptionData, onSave }) => {
         class: 'prose prose-invert max-w-none focus:outline-none',
       },
     },
+    onUpdate: () => {
+      // Notify parent of content changes
+      if (onContentChange && selectedTranscription) {
+        onContentChange();
+      }
+    },
   });
 
   // Track the last text we've added to avoid duplicates
   const lastTextRef = useRef('');
+  // Track the currently loaded transcription ID
+  const currentTranscriptionIdRef = useRef(null);
 
-  // Load transcription data into editor
+  // Load transcription data into editor (only for live/real-time transcription)
   useEffect(() => {
-    if (transcriptionData && editor) {
+    // Only process real-time transcription data when NOT viewing a saved transcription
+    if (transcriptionData && editor && !selectedTranscription) {
       const { text, segments, markdown } = transcriptionData;
 
       // Use text field (from sliding window approach), or markdown, or build from segments
@@ -92,7 +109,34 @@ const TranscriptionEditor = ({ transcriptionData, onSave }) => {
         setTitle(`Transcription ${now.toLocaleString()}`);
       }
     }
-  }, [transcriptionData, editor, title]);
+  }, [transcriptionData, editor, title, selectedTranscription]);
+
+  // Load selected transcription into editor
+  useEffect(() => {
+    if (!editor) return;
+
+    if (selectedTranscription) {
+      console.log('Loading selected transcription:', selectedTranscription.id);
+
+      // Load content from selected transcription
+      const content = selectedTranscription.content_md || '';
+
+      // Destroy and recreate editor content
+      editor.commands.setContent(content, false);
+      lastTextRef.current = content;
+      currentTranscriptionIdRef.current = selectedTranscription.id;
+
+      // Load title
+      setTitle(selectedTranscription.title || '');
+    } else {
+      // Clear editor when no transcription is selected
+      console.log('Clearing editor - no transcription selected');
+      editor.commands.setContent('', false);
+      lastTextRef.current = '';
+      currentTranscriptionIdRef.current = null;
+      setTitle('');
+    }
+  }, [selectedTranscription, editor]);
 
   // Append new transcription segments
   const appendSegments = (segments) => {
@@ -187,24 +231,36 @@ const TranscriptionEditor = ({ transcriptionData, onSave }) => {
     setSaveStatus('Saving...');
 
     try {
-      const data = {
-        title: proposedSummary,
-        content_md: contentMd,
-        duration_seconds: transcriptionData?.duration || 0,
-        speaker_map: {},
-        metadata: {
-          created_via: 'web_interface',
-        },
-      };
+      let result;
 
-      await transcriptionAPI.create(data);
-      setSaveStatus('Saved!');
+      if (selectedTranscription) {
+        // Update existing transcription
+        const updateData = {
+          content_md: contentMd,
+          title: proposedSummary,
+        };
+        result = await transcriptionAPI.update(selectedTranscription.id, updateData);
+        setSaveStatus('Updated!');
+      } else {
+        // Create new transcription
+        const createData = {
+          title: proposedSummary,
+          content_md: contentMd,
+          duration_seconds: transcriptionData?.duration || 0,
+          speaker_map: {},
+          metadata: {
+            created_via: 'web_interface',
+          },
+        };
+        result = await transcriptionAPI.create(createData);
+        setSaveStatus('Saved!');
+      }
 
       // Update the title field with the saved summary
       setTitle(proposedSummary);
 
       if (onSave) {
-        onSave(data);
+        onSave(result);
       }
 
       setTimeout(() => {
@@ -214,6 +270,34 @@ const TranscriptionEditor = ({ transcriptionData, onSave }) => {
       console.error('Save error:', error);
       setSaveStatus('Save failed');
       alert(`Failed to save: ${error.message}`);
+    }
+  };
+
+  // Handle delete transcription
+  const handleDeleteClick = async () => {
+    if (!selectedTranscription) return;
+
+    if (!confirm(`Are you sure you want to delete "${selectedTranscription.title}"?`)) {
+      return;
+    }
+
+    setSaveStatus('Deleting...');
+
+    try {
+      await transcriptionAPI.delete(selectedTranscription.id);
+      setSaveStatus('Deleted!');
+
+      if (onDelete) {
+        onDelete();
+      }
+
+      setTimeout(() => {
+        setSaveStatus('');
+      }, 2000);
+    } catch (error) {
+      console.error('Delete error:', error);
+      setSaveStatus('Delete failed');
+      alert(`Failed to delete: ${error.message}`);
     }
   };
 
@@ -307,8 +391,22 @@ const TranscriptionEditor = ({ transcriptionData, onSave }) => {
           onClick={handleSave}
           disabled={!editor.getText().trim() || isAiProcessing}
         >
-          {isAiProcessing ? 'Generating summary...' : 'Save to Database'}
+          {isAiProcessing ? 'Generating summary...' :
+           selectedTranscription && isModified ? 'Update Transcription' : 'Save to Database'}
         </button>
+
+        {selectedTranscription && (
+          <button
+            className="btn btn-danger"
+            onClick={handleDeleteClick}
+            disabled={isRecording || isModified}
+            title={isRecording ? 'Stop recording to delete' :
+                   isModified ? 'Save changes before deleting' : 'Delete this transcription'}
+          >
+            Delete
+          </button>
+        )}
+
         <button
           className="btn btn-secondary"
           onClick={handleClear}
