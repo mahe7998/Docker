@@ -47,8 +47,8 @@ const TranscriptionEditor = ({
       },
     },
     onUpdate: () => {
-      // Notify parent of content changes
-      if (onContentChange && selectedTranscription) {
+      // Only notify parent of content changes if this is a user edit (not programmatic)
+      if (onContentChange && selectedTranscription && !isProgrammaticUpdateRef.current) {
         onContentChange();
       }
     },
@@ -58,11 +58,22 @@ const TranscriptionEditor = ({
   const lastTextRef = useRef('');
   // Track the currently loaded transcription ID
   const currentTranscriptionIdRef = useRef(null);
+  // Track if we just loaded a transcription to avoid processing stale data
+  const justLoadedTranscriptionRef = useRef(false);
+  // Track if we're programmatically updating content (not user edits)
+  const isProgrammaticUpdateRef = useRef(false);
 
-  // Load transcription data into editor (only for live/real-time transcription)
+  // Load transcription data into editor (real-time transcription)
   useEffect(() => {
-    // Only process real-time transcription data when NOT viewing a saved transcription
-    if (transcriptionData && editor && !selectedTranscription) {
+    // Skip processing if we just loaded a saved transcription (prevent stale data duplication)
+    if (justLoadedTranscriptionRef.current) {
+      console.log('Skipping stale transcriptionData after loading saved transcription');
+      justLoadedTranscriptionRef.current = false;
+      return;
+    }
+
+    // Process real-time transcription data and append to existing content
+    if (transcriptionData && editor) {
       const { text, segments, markdown } = transcriptionData;
 
       // Use text field (from sliding window approach), or markdown, or build from segments
@@ -77,15 +88,25 @@ const TranscriptionEditor = ({
         fullTextLength: fullText.length,
         lastTextLength: lastTextRef.current.length,
         fullTextPreview: fullText.substring(0, 100),
-        isNew: fullText !== lastTextRef.current
+        isNew: fullText !== lastTextRef.current,
+        hasSelectedTranscription: !!selectedTranscription
       });
 
       // Only update if text has changed
       if (fullText && fullText !== lastTextRef.current) {
+        isProgrammaticUpdateRef.current = true;
+
         if (!lastTextRef.current) {
-          // First time - set all content
-          console.log('First transcription - setting initial content');
-          editor.commands.setContent(fullText);
+          // First time receiving transcription in this session
+          if (selectedTranscription) {
+            // We have a loaded transcription, append new content to the end
+            console.log('Appending first transcription chunk to selected transcription');
+            editor.chain().focus('end').insertContent(' ' + fullText).run();
+          } else {
+            // No loaded transcription, set all content
+            console.log('First transcription - setting initial content');
+            editor.commands.setContent(fullText);
+          }
           lastTextRef.current = fullText;
         } else if (fullText.length > lastTextRef.current.length) {
           // Append only new content
@@ -96,11 +117,15 @@ const TranscriptionEditor = ({
           editor.chain().focus('end').insertContent(newContent).run();
           lastTextRef.current = fullText;
         } else {
-          // Text is shorter - new session, replace everything
-          console.log('New session - replacing all content');
-          editor.commands.setContent(fullText);
-          lastTextRef.current = fullText;
+          // Text is shorter - new recording session starting
+          console.log('New recording session - resetting transcription tracking');
+          lastTextRef.current = '';
         }
+
+        // Reset flag after a brief delay to allow update to complete
+        setTimeout(() => {
+          isProgrammaticUpdateRef.current = false;
+        }, 100);
       }
 
       // Set title if not already set
@@ -121,20 +146,41 @@ const TranscriptionEditor = ({
       // Load content from selected transcription
       const content = selectedTranscription.content_md || '';
 
+      // Mark as programmatic update to prevent triggering isModified
+      isProgrammaticUpdateRef.current = true;
+
       // Destroy and recreate editor content
       editor.commands.setContent(content, false);
-      lastTextRef.current = content;
+      // Reset lastTextRef so new recording will append to this content
+      lastTextRef.current = '';
       currentTranscriptionIdRef.current = selectedTranscription.id;
+      // Mark that we just loaded a transcription to skip stale transcriptionData
+      justLoadedTranscriptionRef.current = true;
 
       // Load title
       setTitle(selectedTranscription.title || '');
+
+      // Reset flag after a brief delay
+      setTimeout(() => {
+        isProgrammaticUpdateRef.current = false;
+      }, 100);
     } else {
       // Clear editor when no transcription is selected
       console.log('Clearing editor - no transcription selected');
+
+      // Mark as programmatic update
+      isProgrammaticUpdateRef.current = true;
+
       editor.commands.setContent('', false);
       lastTextRef.current = '';
       currentTranscriptionIdRef.current = null;
+      justLoadedTranscriptionRef.current = false;
       setTitle('');
+
+      // Reset flag after a brief delay
+      setTimeout(() => {
+        isProgrammaticUpdateRef.current = false;
+      }, 100);
     }
   }, [selectedTranscription, editor]);
 
@@ -356,13 +402,6 @@ const TranscriptionEditor = ({
           disabled={isAiProcessing}
         >
           {isAiProcessing && aiAction === 'rephrase' ? 'Processing...' : 'Rephrase'}
-        </button>
-        <button
-          className="btn btn-small btn-ai"
-          onClick={() => handleAiReview('summarize')}
-          disabled={isAiProcessing}
-        >
-          {isAiProcessing && aiAction === 'summarize' ? 'Processing...' : 'Summarize'}
         </button>
         <button
           className="btn btn-small btn-ai"

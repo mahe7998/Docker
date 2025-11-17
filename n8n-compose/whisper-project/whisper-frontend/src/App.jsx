@@ -14,6 +14,7 @@ function App() {
   const [isRecording, setIsRecording] = useState(false);
   const [selectedTranscription, setSelectedTranscription] = useState(null);
   const [isModified, setIsModified] = useState(false);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
   const editorRef = useRef(null);
 
   // Handle recording state changes
@@ -78,6 +79,7 @@ function App() {
     setStatusMessage('Transcription saved to database!');
     setIsModified(false);  // Reset modification flag after save
     setSelectedTranscription(data);  // Update selected transcription with saved data
+    setRefreshTrigger(prev => prev + 1);  // Trigger refresh of transcription list
 
     setTimeout(() => {
       setStatusMessage('');
@@ -107,6 +109,7 @@ function App() {
     setSelectedTranscription(null);
     setTranscriptionData(null);
     setIsModified(false);
+    setRefreshTrigger(prev => prev + 1);  // Trigger refresh of transcription list
     setStatusMessage('Transcription deleted');
     setTimeout(() => setStatusMessage(''), 3000);
   };
@@ -137,6 +140,7 @@ function App() {
             onSelect={handleTranscriptionSelect}
             disabled={isRecording}
             selectedId={selectedTranscription?.id}
+            refreshTrigger={refreshTrigger}
           />
 
           {/* Audio Recorder */}

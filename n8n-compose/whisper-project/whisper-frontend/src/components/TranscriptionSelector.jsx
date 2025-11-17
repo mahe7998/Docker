@@ -6,15 +6,15 @@ import { useState, useEffect } from 'react';
 import { fetchTranscriptionSummaries, fetchTranscriptionById } from '../services/api';
 import './TranscriptionSelector.css';
 
-function TranscriptionSelector({ onSelect, disabled, selectedId }) {
+function TranscriptionSelector({ onSelect, disabled, selectedId, refreshTrigger }) {
   const [transcriptions, setTranscriptions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  // Fetch transcription summaries on component mount
+  // Fetch transcription summaries on component mount and when refreshTrigger changes
   useEffect(() => {
     loadTranscriptions();
-  }, []);
+  }, [refreshTrigger]);
 
   const loadTranscriptions = async () => {
     setLoading(true);
