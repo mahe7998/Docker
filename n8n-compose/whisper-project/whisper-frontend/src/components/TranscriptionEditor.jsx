@@ -18,6 +18,8 @@ const TranscriptionEditor = ({ transcriptionData, onSave }) => {
   const [isAiProcessing, setIsAiProcessing] = useState(false);
   const [aiAction, setAiAction] = useState('');
   const [saveStatus, setSaveStatus] = useState('');
+  const [showSummaryModal, setShowSummaryModal] = useState(false);
+  const [proposedSummary, setProposedSummary] = useState('');
 
   const editor = useEditor({
     extensions: [
@@ -133,7 +135,7 @@ const TranscriptionEditor = ({ transcriptionData, onSave }) => {
     }
   };
 
-  // Save transcription
+  // Generate summary and show modal before saving
   const handleSave = async () => {
     if (!editor) return;
 
@@ -143,11 +145,50 @@ const TranscriptionEditor = ({ transcriptionData, onSave }) => {
       return;
     }
 
+    setSaveStatus('Generating summary...');
+    setIsAiProcessing(true);
+
+    try {
+      // Generate AI summary for the title
+      const result = await transcriptionAPI.aiReview(contentMd, 'summarize');
+      const summary = result.result.trim();
+
+      // Show modal with proposed summary
+      setProposedSummary(summary);
+      setShowSummaryModal(true);
+      setSaveStatus('');
+      setIsAiProcessing(false);
+    } catch (error) {
+      console.error('Summary generation error:', error);
+      setSaveStatus('');
+      setIsAiProcessing(false);
+
+      // If AI summary fails, ask user to provide title manually
+      alert('AI summary generation failed. Please provide a title manually.');
+    }
+  };
+
+  // Actually save to database with confirmed title
+  const handleConfirmSave = async () => {
+    if (!editor) return;
+
+    const contentMd = editor.getText();
+    if (!contentMd.trim()) {
+      alert('Cannot save empty transcription');
+      return;
+    }
+
+    if (!proposedSummary.trim()) {
+      alert('Please provide a title for the transcription');
+      return;
+    }
+
+    setShowSummaryModal(false);
     setSaveStatus('Saving...');
 
     try {
       const data = {
-        title: title || 'Untitled Transcription',
+        title: proposedSummary,
         content_md: contentMd,
         duration_seconds: transcriptionData?.duration || 0,
         speaker_map: {},
@@ -158,6 +199,9 @@ const TranscriptionEditor = ({ transcriptionData, onSave }) => {
 
       await transcriptionAPI.create(data);
       setSaveStatus('Saved!');
+
+      // Update the title field with the saved summary
+      setTitle(proposedSummary);
 
       if (onSave) {
         onSave(data);
@@ -171,6 +215,12 @@ const TranscriptionEditor = ({ transcriptionData, onSave }) => {
       setSaveStatus('Save failed');
       alert(`Failed to save: ${error.message}`);
     }
+  };
+
+  // Cancel save and close modal
+  const handleCancelSave = () => {
+    setShowSummaryModal(false);
+    setProposedSummary('');
   };
 
   // Clear editor
@@ -255,9 +305,9 @@ const TranscriptionEditor = ({ transcriptionData, onSave }) => {
         <button
           className="btn btn-primary"
           onClick={handleSave}
-          disabled={!editor.getText().trim()}
+          disabled={!editor.getText().trim() || isAiProcessing}
         >
-          Save to Database
+          {isAiProcessing ? 'Generating summary...' : 'Save to Database'}
         </button>
         <button
           className="btn btn-secondary"
@@ -266,6 +316,38 @@ const TranscriptionEditor = ({ transcriptionData, onSave }) => {
           Clear
         </button>
       </div>
+
+      {/* Summary Confirmation Modal */}
+      {showSummaryModal && (
+        <div className="modal-overlay" onClick={handleCancelSave}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3>Confirm Summary</h3>
+            <p>AI has generated this summary for your transcription:</p>
+            <textarea
+              className="summary-input"
+              value={proposedSummary}
+              onChange={(e) => setProposedSummary(e.target.value)}
+              rows={4}
+              placeholder="Edit summary or provide your own..."
+            />
+            <div className="modal-actions">
+              <button
+                className="btn btn-primary"
+                onClick={handleConfirmSave}
+                disabled={!proposedSummary.trim()}
+              >
+                Save with this summary
+              </button>
+              <button
+                className="btn btn-secondary"
+                onClick={handleCancelSave}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
