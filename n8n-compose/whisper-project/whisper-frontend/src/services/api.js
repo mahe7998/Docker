@@ -103,8 +103,15 @@ export const transcriptionAPI = {
    * Use AI to review/rewrite text
    */
   aiReview: async (text, action) => {
+    // Calculate dynamic timeout based on text length
+    // Your example text (~650 words) took ~2.6 minutes, so we want ~4 minutes for that length
+    // Formula: (words * 0.37) seconds + 60 second base = ~4 minutes for 650 words
+    const wordCount = text.trim().split(/\s+/).length;
+    const timeoutMs = (wordCount * 0.37 + 60.0) * 1000.0; // Convert to milliseconds
+
     const response = await api.post('/transcriptions/ai-review', null, {
       params: { text, action },
+      timeout: timeoutMs,
     });
     return response.data;
   },

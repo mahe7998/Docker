@@ -123,7 +123,7 @@ function App() {
     <div className="app">
       <header className="app-header">
         <div className="header-content">
-          <h1>WhisperX Transcription</h1>
+          <h1>Thought Capture</h1>
           <p className="subtitle">Real-time audio transcription with AI review</p>
         </div>
         {statusMessage && (
@@ -167,7 +167,7 @@ function App() {
       <footer className="app-footer">
         <div className="container">
           <p>
-            Powered by WhisperX, Ollama AI, and Tailscale
+            Powered by MLX-Whisper, Ollama AI, and Tailscale
           </p>
           <p className="footer-note">
             Transcriptions are saved to PostgreSQL and can be imported into Obsidian

@@ -6,35 +6,79 @@ class TranscriptionWebSocket {
   constructor() {
     this.ws = null;
     this.isConnected = false;
+    this.selectedModel = null;
+    this.modelReady = false;
     this.listeners = {
       transcription: [],
       status: [],
       error: [],
       connect: [],
       disconnect: [],
+      model_ready: [],
+      download_progress: [],
     };
   }
 
   /**
    * Connect to WebSocket server
+   * @param {string} model - The Whisper model to use for transcription
    */
-  connect() {
+  connect(model = 'mlx-community/whisper-tiny') {
     return new Promise((resolve, reject) => {
       try {
+        this.selectedModel = model;
+        this.modelReady = false;
+
         // Determine WebSocket URL
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const host = window.location.host;
         const wsUrl = `${protocol}//${host}/ws/transcribe`;
 
-        console.log('Connecting to WebSocket:', wsUrl);
+        console.log('Connecting to WebSocket:', wsUrl, 'with model:', model);
 
         this.ws = new WebSocket(wsUrl);
+
+        // Set up one-time listener for model ready
+        const modelReadyHandler = () => {
+          this.modelReady = true;
+          this.off('model_ready', modelReadyHandler);
+          this.off('error', errorHandler);
+          clearTimeout(timeoutId);
+          resolve();
+        };
+        this.on('model_ready', modelReadyHandler);
+
+        // Set up error handler for model loading failures
+        const errorHandler = (data) => {
+          if (data.message && data.message.includes('model')) {
+            this.off('model_ready', modelReadyHandler);
+            this.off('error', errorHandler);
+            clearTimeout(timeoutId);
+            reject(new Error(data.message));
+          }
+        };
+        this.on('error', errorHandler);
+
+        // Set timeout for model loading (10 minutes for large models)
+        const timeoutId = setTimeout(() => {
+          this.off('model_ready', modelReadyHandler);
+          this.off('error', errorHandler);
+          reject(new Error('Model loading timeout - please try again'));
+        }, 600000); // 10 minutes
 
         this.ws.onopen = () => {
           console.log('WebSocket connected');
           this.isConnected = true;
+
+          // Send model selection to server
+          const message = {
+            type: 'set_model',
+            model: this.selectedModel,
+          };
+          this.ws.send(JSON.stringify(message));
+
           this._emit('connect');
-          resolve();
+          // Don't resolve here - wait for model_ready event
         };
 
         this.ws.onmessage = (event) => {
@@ -151,7 +195,7 @@ class TranscriptionWebSocket {
    * Handle incoming message
    */
   _handleMessage(message) {
-    const { type, ...data } = message;
+    const { type, ...data} = message;
 
     switch (type) {
       case 'transcription':
@@ -159,6 +203,13 @@ class TranscriptionWebSocket {
         break;
       case 'status':
         this._emit('status', data);
+        // Don't check for "ready" in status messages - only use explicit model_ready event
+        break;
+      case 'model_ready':
+        this._emit('model_ready', data);
+        break;
+      case 'download_progress':
+        this._emit('download_progress', data);
         break;
       case 'error':
         this._emit('error', data);

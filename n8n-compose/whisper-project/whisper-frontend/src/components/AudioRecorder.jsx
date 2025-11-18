@@ -9,8 +9,10 @@ import './AudioRecorder.css';
 const AudioRecorder = ({ onTranscription, onStatus, onRecordingStateChange }) => {
   const [isRecording, setIsRecording] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [isLoadingModel, setIsLoadingModel] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [status, setStatus] = useState('');
+  const [selectedModel, setSelectedModel] = useState('mlx-community/whisper-tiny');
 
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
@@ -24,6 +26,32 @@ const AudioRecorder = ({ onTranscription, onStatus, onRecordingStateChange }) =>
       onRecordingStateChange(isRecording);
     }
   }, [isRecording, onRecordingStateChange]);
+
+  // Load default model on startup (runs in parallel with transcription loading)
+  useEffect(() => {
+    const loadDefaultModel = async () => {
+      setIsLoadingModel(true);
+
+      try {
+        // Status updates will come from WebSocket status handler
+        await wsClient.connect(selectedModel);
+
+        // Model is ready - clear loading state
+        setIsLoadingModel(false);
+      } catch (error) {
+        console.error('Error loading default model:', error);
+        setStatus(`Error: ${error.message}`);
+        setIsLoadingModel(false);
+      }
+    };
+
+    loadDefaultModel();
+
+    // Cleanup on unmount
+    return () => {
+      wsClient.disconnect();
+    };
+  }, []); // Run once on mount
 
   // Setup WebSocket listeners
   useEffect(() => {
@@ -52,7 +80,14 @@ const AudioRecorder = ({ onTranscription, onStatus, onRecordingStateChange }) =>
     };
 
     const handleStatus = (data) => {
-      console.log('Status:', data.message);
+      setStatus(data.message);
+      if (onStatus) {
+        onStatus(data.message);
+      }
+    };
+
+    const handleDownloadProgress = (data) => {
+      // Update status with download progress
       setStatus(data.message);
       if (onStatus) {
         onStatus(data.message);
@@ -68,23 +103,51 @@ const AudioRecorder = ({ onTranscription, onStatus, onRecordingStateChange }) =>
 
     wsClient.on('transcription', handleTranscription);
     wsClient.on('status', handleStatus);
+    wsClient.on('download_progress', handleDownloadProgress);
     wsClient.on('error', handleError);
 
     return () => {
       wsClient.off('transcription', handleTranscription);
       wsClient.off('status', handleStatus);
+      wsClient.off('download_progress', handleDownloadProgress);
       wsClient.off('error', handleError);
     };
   }, [onTranscription, onStatus]);
+
+  // Handle model selection change
+  const handleModelChange = async (newModel) => {
+    setSelectedModel(newModel);
+    setIsLoadingModel(true);
+
+    try {
+      // Disconnect existing WebSocket if any
+      wsClient.disconnect();
+
+      // Connect to WebSocket with new model
+      // Status updates will come from WebSocket status handler
+      await wsClient.connect(newModel);
+
+      // Model is ready - clear loading state
+      setIsLoadingModel(false);
+    } catch (error) {
+      console.error('Error loading model:', error);
+      setStatus(`Error: ${error.message}`);
+      setIsLoadingModel(false);
+    }
+  };
 
   // Start recording
   const startRecording = async () => {
     try {
       setIsConnecting(true);
-      setStatus('Connecting...');
+      setStatus('Starting recording...');
 
-      // Connect to WebSocket
-      await wsClient.connect();
+      // If not already connected, connect now
+      if (!wsClient.isConnected || !wsClient.modelReady) {
+        setStatus('Connecting...');
+        await wsClient.connect(selectedModel);
+      }
+
       setStatus('Connected');
 
       // Request microphone access
@@ -197,44 +260,14 @@ const AudioRecorder = ({ onTranscription, onStatus, onRecordingStateChange }) =>
     <div className="audio-recorder">
       <div className="recorder-header">
         <h2>Audio Recording</h2>
-        {status && <span className="status-message">{status}</span>}
-      </div>
 
-      <div className="recorder-controls">
-        {!isRecording && !isConnecting && (
-          <button
-            className="btn btn-primary btn-start"
-            onClick={startRecording}
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="24"
-              height="24"
-              viewBox="0 0 24 24"
-              fill="currentColor"
-            >
-              <path d="M12 15c1.66 0 3-1.34 3-3V6c0-1.66-1.34-3-3-3S9 4.34 9 6v6c0 1.66 1.34 3 3 3z" />
-              <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z" />
-            </svg>
-            Start Recording
-          </button>
-        )}
-
-        {isConnecting && (
-          <button className="btn btn-secondary" disabled>
-            Connecting...
-          </button>
-        )}
-
-        {isRecording && (
-          <div className="recording-active">
-            <div className="recording-indicator">
-              <span className="recording-dot"></span>
-              <span className="recording-time">{formatTime(recordingTime)}</span>
-            </div>
+        {/* Recording controls right after title */}
+        <div className="recorder-controls">
+          {!isRecording && !isConnecting && (
             <button
-              className="btn btn-danger btn-stop"
-              onClick={stopRecording}
+              className="btn btn-primary btn-start"
+              onClick={startRecording}
+              disabled={isLoadingModel}
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -243,12 +276,73 @@ const AudioRecorder = ({ onTranscription, onStatus, onRecordingStateChange }) =>
                 viewBox="0 0 24 24"
                 fill="currentColor"
               >
-                <rect x="6" y="6" width="12" height="12" />
+                <path d="M12 15c1.66 0 3-1.34 3-3V6c0-1.66-1.34-3-3-3S9 4.34 9 6v6c0 1.66 1.34 3 3 3z" />
+                <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z" />
               </svg>
-              Stop Recording
+              Start Recording
             </button>
+          )}
+
+          {isConnecting && (
+            <button className="btn btn-secondary" disabled>
+              Connecting...
+            </button>
+          )}
+
+          {isRecording && (
+            <div className="recording-active">
+              <div className="recording-indicator">
+                <span className="recording-dot"></span>
+                <span className="recording-time">{formatTime(recordingTime)}</span>
+              </div>
+              <button
+                className="btn btn-danger btn-stop"
+                onClick={stopRecording}
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="24"
+                  height="24"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                >
+                  <rect x="6" y="6" width="12" height="12" />
+                </svg>
+                Stop Recording
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Model selector and status */}
+      <div className="recorder-settings">
+        <div className="model-selector">
+          <label htmlFor="model-select">Model:</label>
+          <select
+            id="model-select"
+            value={selectedModel}
+            onChange={(e) => handleModelChange(e.target.value)}
+            disabled={isRecording || isConnecting || isLoadingModel}
+            className="model-select"
+          >
+            <option value="mlx-community/whisper-tiny">Tiny (Fastest, 75MB)</option>
+            <option value="mlx-community/whisper-base-mlx">Base (Fast, 145MB)</option>
+            <option value="mlx-community/whisper-small-mlx">Small (Better, 483MB)</option>
+            <option value="mlx-community/whisper-medium-mlx">Medium (Best, 1.5GB)</option>
+            <option value="mlx-community/whisper-large-v3-mlx">Large V3 (Highest Accuracy, 3GB)</option>
+            <option value="mlx-community/whisper-large-v3-turbo">Turbo (Fast + Accurate, 809MB)</option>
+          </select>
+        </div>
+
+        {isLoadingModel && (
+          <div className="loading-indicator">
+            <span className="spinner"></span>
+            <span>{status || 'Loading model...'}</span>
           </div>
         )}
+
+        {!isLoadingModel && status && <span className="status-message">{status}</span>}
       </div>
     </div>
   );
