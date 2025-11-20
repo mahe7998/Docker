@@ -15,15 +15,20 @@ function App() {
   const [selectedTranscription, setSelectedTranscription] = useState(null);
   const [isModified, setIsModified] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [audioFilePath, setAudioFilePath] = useState(null);
   const editorRef = useRef(null);
 
   // Handle recording state changes
   // useCallback ensures this function reference stays stable across re-renders
-  const handleRecordingStateChange = useCallback((recording) => {
+  const handleRecordingStateChange = useCallback((recording, audioUrl) => {
     setIsRecording(recording);
     if (recording) {
       // Clear previous transcription when starting new recording
       setTranscriptionData(null);
+      setAudioFilePath(null);
+    } else if (audioUrl) {
+      // Recording stopped - save audio URL
+      setAudioFilePath(audioUrl);
     }
   }, []);
 
@@ -95,11 +100,13 @@ function App() {
         segments: [],
         final: true,
       });
+      setAudioFilePath(transcription.audio_file_path || null);
       setIsModified(false);
     } else {
       // Clear selection
       setSelectedTranscription(null);
       setTranscriptionData(null);
+      setAudioFilePath(null);
       setIsModified(false);
     }
   };
@@ -148,6 +155,7 @@ function App() {
             onTranscription={handleTranscription}
             onStatus={handleStatus}
             onRecordingStateChange={handleRecordingStateChange}
+            loadedAudioPath={audioFilePath}
           />
 
           {/* Transcription Editor */}
@@ -157,6 +165,7 @@ function App() {
             selectedTranscription={selectedTranscription}
             isRecording={isRecording}
             isModified={isModified}
+            audioFilePath={audioFilePath}
             onSave={handleSave}
             onDelete={handleDelete}
             onContentChange={handleContentChange}

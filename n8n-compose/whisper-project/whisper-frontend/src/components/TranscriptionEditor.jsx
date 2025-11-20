@@ -17,6 +17,7 @@ const TranscriptionEditor = ({
   selectedTranscription,
   isRecording,
   isModified,
+  audioFilePath,
   onSave,
   onDelete,
   onContentChange
@@ -294,6 +295,7 @@ const TranscriptionEditor = ({
           content_md: contentMd,
           duration_seconds: transcriptionData?.duration || 0,
           speaker_map: {},
+          audio_file_path: audioFilePath,
           metadata: {
             created_via: 'web_interface',
           },

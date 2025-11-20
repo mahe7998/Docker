@@ -4,15 +4,23 @@
  */
 import { useState, useRef, useEffect } from 'react';
 import wsClient from '../services/websocket';
+import AudioVisualizer from './AudioVisualizer';
+import AudioPlayer from './AudioPlayer';
 import './AudioRecorder.css';
 
-const AudioRecorder = ({ onTranscription, onStatus, onRecordingStateChange }) => {
+const AudioRecorder = ({ onTranscription, onStatus, onRecordingStateChange, loadedAudioPath }) => {
   const [isRecording, setIsRecording] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isLoadingModel, setIsLoadingModel] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [status, setStatus] = useState('');
-  const [selectedModel, setSelectedModel] = useState('mlx-community/whisper-tiny');
+  const [selectedModel, setSelectedModel] = useState(() => {
+    // Load saved model from localStorage, or default to whisper-tiny
+    const savedModel = localStorage.getItem('whisper-selected-model');
+    return savedModel || 'mlx-community/whisper-tiny';
+  });
+  const [audioUrl, setAudioUrl] = useState(null);
+  const [recordingCompleted, setRecordingCompleted] = useState(false);
 
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
@@ -20,12 +28,12 @@ const AudioRecorder = ({ onTranscription, onStatus, onRecordingStateChange }) =>
   const streamRef = useRef(null);
   const disconnectTimeoutRef = useRef(null);
 
-  // Notify parent when recording state changes
+  // Notify parent when recording state changes or audio URL is available
   useEffect(() => {
     if (onRecordingStateChange) {
-      onRecordingStateChange(isRecording);
+      onRecordingStateChange(isRecording, audioUrl);
     }
-  }, [isRecording, onRecordingStateChange]);
+  }, [isRecording, audioUrl, onRecordingStateChange]);
 
   // Load default model on startup (runs in parallel with transcription loading)
   useEffect(() => {
@@ -84,6 +92,13 @@ const AudioRecorder = ({ onTranscription, onStatus, onRecordingStateChange }) =>
       if (onStatus) {
         onStatus(data.message);
       }
+
+      // Capture audio URL when recording is complete
+      if (data.audio_url) {
+        setAudioUrl(data.audio_url);
+        setRecordingCompleted(true);
+        console.log('Audio file available:', data.audio_url);
+      }
     };
 
     const handleDownloadProgress = (data) => {
@@ -118,6 +133,9 @@ const AudioRecorder = ({ onTranscription, onStatus, onRecordingStateChange }) =>
   const handleModelChange = async (newModel) => {
     setSelectedModel(newModel);
     setIsLoadingModel(true);
+
+    // Save selected model to localStorage
+    localStorage.setItem('whisper-selected-model', newModel);
 
     try {
       // Disconnect existing WebSocket if any
@@ -189,6 +207,8 @@ const AudioRecorder = ({ onTranscription, onStatus, onRecordingStateChange }) =>
       setIsConnecting(false);
       setRecordingTime(0);
       setStatus('Recording...');
+      setAudioUrl(null); // Clear previous audio
+      setRecordingCompleted(false); // Reset completion status
 
       // Start timer
       timerIntervalRef.current = setInterval(() => {
@@ -344,6 +364,16 @@ const AudioRecorder = ({ onTranscription, onStatus, onRecordingStateChange }) =>
 
         {!isLoadingModel && status && <span className="status-message">{status}</span>}
       </div>
+
+      {/* Audio Visualizer - shown while recording */}
+      {isRecording && (
+        <AudioVisualizer mediaStream={streamRef.current} isRecording={isRecording} />
+      )}
+
+      {/* Audio Player - shown after recording completes or when loaded transcription has audio */}
+      {!isRecording && loadedAudioPath && (
+        <AudioPlayer audioUrl={loadedAudioPath} />
+      )}
     </div>
   );
 };
