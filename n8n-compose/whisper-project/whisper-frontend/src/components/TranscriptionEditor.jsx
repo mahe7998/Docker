@@ -207,8 +207,18 @@ const TranscriptionEditor = ({
       return;
     }
 
+    // Warn user if text is very large
+    const wordCount = text.trim().split(/\s+/).length;
+    if (wordCount > 5000) {
+      const estimatedMinutes = Math.ceil((wordCount * 0.37 + 60) / 60);
+      if (!confirm(`This is a large text (${wordCount} words). Processing may take up to ${estimatedMinutes} minutes. Continue?`)) {
+        return;
+      }
+    }
+
     setIsAiProcessing(true);
     setAiAction(action);
+    setSaveStatus(`Processing ${wordCount} words...`);
 
     try {
       const result = await transcriptionAPI.aiReview(text, action);
@@ -218,11 +228,25 @@ const TranscriptionEditor = ({
 
       setIsAiProcessing(false);
       setAiAction('');
+      setSaveStatus('Processing complete!');
+      setTimeout(() => setSaveStatus(''), 3000);
     } catch (error) {
       console.error('AI review error:', error);
-      alert(`AI review failed: ${error.message}`);
+
+      // Provide more helpful error messages
+      let errorMessage = 'AI review failed';
+      if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
+        errorMessage = `Request timed out. The text (${wordCount} words) may be too large. Try processing a smaller section.`;
+      } else if (error.response?.status === 503) {
+        errorMessage = 'AI service is not available. Please check if Ollama is running.';
+      } else {
+        errorMessage = `AI review failed: ${error.message}`;
+      }
+
+      alert(errorMessage);
       setIsAiProcessing(false);
       setAiAction('');
+      setSaveStatus('');
     }
   };
 
@@ -236,6 +260,14 @@ const TranscriptionEditor = ({
       return;
     }
 
+    // If updating existing transcription, use existing title (allow user to edit)
+    if (selectedTranscription) {
+      setProposedSummary(selectedTranscription.title || title);
+      setShowSummaryModal(true);
+      return;
+    }
+
+    // For new transcriptions, generate AI summary
     setSaveStatus('Generating summary...');
     setIsAiProcessing(true);
 
@@ -432,7 +464,8 @@ const TranscriptionEditor = ({
           onClick={handleSave}
           disabled={!editor.getText().trim() || isAiProcessing}
         >
-          {isAiProcessing ? 'Generating summary...' :
+          {isAiProcessing && aiAction === 'summarize' ? 'Generating summary...' :
+           isAiProcessing ? 'Processing...' :
            selectedTranscription && isModified ? 'Update Transcription' : 'Save to Database'}
         </button>
 

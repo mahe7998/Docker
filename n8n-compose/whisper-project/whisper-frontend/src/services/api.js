@@ -104,10 +104,16 @@ export const transcriptionAPI = {
    */
   aiReview: async (text, action) => {
     // Calculate dynamic timeout based on text length
-    // Your example text (~650 words) took ~2.6 minutes, so we want ~4 minutes for that length
-    // Formula: (words * 0.37) seconds + 60 second base = ~4 minutes for 650 words
+    // Backend chunks text at 4000 words, processing each chunk sequentially
+    // Estimate: ~0.4 seconds per word + 30 second base per chunk + 60 second overall base
     const wordCount = text.trim().split(/\s+/).length;
-    const timeoutMs = (wordCount * 0.37 + 60.0) * 1000.0; // Convert to milliseconds
+    const chunkSize = 4000;
+    const numChunks = Math.ceil(wordCount / chunkSize);
+
+    // Base timeout: 60 seconds + (number of chunks * 30 seconds overhead) + (words * 0.4 seconds)
+    const timeoutMs = (60 + (numChunks * 30) + (wordCount * 0.4)) * 1000.0;
+
+    console.log(`[API] AI Review: ${wordCount} words, ${numChunks} chunks, timeout: ${(timeoutMs/1000/60).toFixed(1)} minutes`);
 
     const response = await api.post('/transcriptions/ai-review', null, {
       params: { text, action },

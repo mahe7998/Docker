@@ -4,7 +4,7 @@ import './AudioPlayer.css';
 /**
  * AudioPlayer - Simple audio playback component for recorded WebM files
  */
-const AudioPlayer = ({ audioUrl }) => {
+const AudioPlayer = ({ audioUrl, durationSeconds }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -15,32 +15,103 @@ const AudioPlayer = ({ audioUrl }) => {
     const audio = audioRef.current;
     if (!audio) return;
 
+    console.log('[AudioPlayer] Loading audio - URL:', audioUrl);
+    console.log('[AudioPlayer] Duration from database:', durationSeconds);
+
+    // Reset state when URL changes
+    setCurrentTime(0);
+    setIsPlaying(false);
+
+    // Use provided duration if available (from database), otherwise try to detect from metadata
+    if (durationSeconds && durationSeconds > 0) {
+      console.log('[AudioPlayer] Using database duration:', durationSeconds, 'seconds');
+      setDuration(durationSeconds);
+    } else {
+      console.log('[AudioPlayer] No database duration - will need to load metadata from file');
+      setDuration(0);
+    }
+
+    const loadStartTime = performance.now();
+
     const updateTime = () => setCurrentTime(audio.currentTime);
-    const updateDuration = () => setDuration(audio.duration);
+    const updateDuration = () => {
+      // Only use browser metadata if we don't have duration from database
+      if (!durationSeconds || durationSeconds === 0) {
+        if (audio.duration && isFinite(audio.duration)) {
+          const loadTime = performance.now() - loadStartTime;
+          console.log('[AudioPlayer] Duration loaded from metadata:', audio.duration, 'seconds (took', loadTime.toFixed(0), 'ms)');
+          setDuration(audio.duration);
+        } else {
+          setDuration(0);
+        }
+      }
+    };
     const handleEnded = () => setIsPlaying(false);
     const handleError = () => {
-      console.error('Audio playback error:', audio.error);
+      console.error('[AudioPlayer] Audio playback error:', audio.error);
       setHasError(true);
       setIsPlaying(false);
     };
     const handleCanPlay = () => {
+      const loadTime = performance.now() - loadStartTime;
+      console.log('[AudioPlayer] Audio can play (took', loadTime.toFixed(0), 'ms since load started)');
       setHasError(false);
+      updateDuration();
     };
+    // Keep event listeners for performance but with timing logs
+    const handleLoadStart = () => {
+      console.log('[AudioPlayer] Load started at', performance.now().toFixed(0), 'ms');
+    };
+    const handleLoadedMetadata = () => {
+      const loadTime = performance.now() - loadStartTime;
+      console.log('[AudioPlayer] Metadata loaded (took', loadTime.toFixed(0), 'ms)');
+    };
+    const handleLoadedData = () => {
+      const loadTime = performance.now() - loadStartTime;
+      console.log('[AudioPlayer] Data loaded (took', loadTime.toFixed(0), 'ms)');
+    };
+    const handleProgress = () => {
+      // Track buffering progress for browser optimization
+      if (audio.buffered.length > 0) {
+        const bufferedEnd = audio.buffered.end(0);
+        const bufferedPercent = audio.duration ? (bufferedEnd / audio.duration * 100) : 0;
+      }
+    };
+    const handleWaiting = () => {};
+    const handlePlaying = () => {};
 
     audio.addEventListener('timeupdate', updateTime);
-    audio.addEventListener('loadedmetadata', updateDuration);
+    audio.addEventListener('loadedmetadata', handleLoadedMetadata);
+    audio.addEventListener('loadeddata', handleLoadedData);
+    audio.addEventListener('durationchange', updateDuration);
+    audio.addEventListener('canplay', handleCanPlay);
+    audio.addEventListener('canplaythrough', updateDuration);
     audio.addEventListener('ended', handleEnded);
     audio.addEventListener('error', handleError);
-    audio.addEventListener('canplay', handleCanPlay);
+    audio.addEventListener('loadstart', handleLoadStart);
+    audio.addEventListener('progress', handleProgress);
+    audio.addEventListener('waiting', handleWaiting);
+    audio.addEventListener('playing', handlePlaying);
+
+    // Don't force load immediately - only load when user plays (preload="none")
+    // This avoids downloading metadata for large files
+    // audio.load();
 
     return () => {
       audio.removeEventListener('timeupdate', updateTime);
-      audio.removeEventListener('loadedmetadata', updateDuration);
+      audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
+      audio.removeEventListener('loadeddata', handleLoadedData);
+      audio.removeEventListener('durationchange', updateDuration);
+      audio.removeEventListener('canplay', handleCanPlay);
+      audio.removeEventListener('canplaythrough', updateDuration);
       audio.removeEventListener('ended', handleEnded);
       audio.removeEventListener('error', handleError);
-      audio.removeEventListener('canplay', handleCanPlay);
+      audio.removeEventListener('loadstart', handleLoadStart);
+      audio.removeEventListener('progress', handleProgress);
+      audio.removeEventListener('waiting', handleWaiting);
+      audio.removeEventListener('playing', handlePlaying);
     };
-  }, [audioUrl]);
+  }, [audioUrl, durationSeconds]);
 
   const togglePlayPause = async () => {
     const audio = audioRef.current;
@@ -55,7 +126,7 @@ const AudioPlayer = ({ audioUrl }) => {
         setIsPlaying(true);
       }
     } catch (error) {
-      console.error('Error playing audio:', error);
+      console.error('[AudioPlayer] Error playing audio:', error);
       setHasError(true);
       setIsPlaying(false);
     }
@@ -63,6 +134,7 @@ const AudioPlayer = ({ audioUrl }) => {
 
   const handleSeek = (e) => {
     const audio = audioRef.current;
+    // Only allow seeking if we have a valid duration
     if (!audio || hasError || !isFinite(duration) || duration === 0) return;
 
     const rect = e.currentTarget.getBoundingClientRect();
@@ -85,7 +157,7 @@ const AudioPlayer = ({ audioUrl }) => {
 
   return (
     <div className="audio-player">
-      <audio ref={audioRef} src={audioUrl} preload="metadata" />
+      <audio ref={audioRef} src={audioUrl} preload="none" />
 
       {hasError && (
         <div style={{ color: '#ff6b6b', padding: '10px', textAlign: 'center' }}>
@@ -119,12 +191,16 @@ const AudioPlayer = ({ audioUrl }) => {
           <div className="progress-bar">
             <div
               className="progress-fill"
-              style={{ width: `${(currentTime / duration) * 100}%` }}
+              style={{
+                width: duration > 0 ? `${(currentTime / duration) * 100}%` : '0%'
+              }}
             />
           </div>
         </div>
 
-        <div className="time-display">{formatTime(duration)}</div>
+        <div className="time-display">
+          {duration > 0 ? formatTime(duration) : '--:--'}
+        </div>
           </div>
 
           <div className="player-info">

@@ -156,6 +156,7 @@ function App() {
             onStatus={handleStatus}
             onRecordingStateChange={handleRecordingStateChange}
             loadedAudioPath={audioFilePath}
+            audioDuration={selectedTranscription?.duration_seconds}
           />
 
           {/* Transcription Editor */}

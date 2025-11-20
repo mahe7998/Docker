@@ -8,7 +8,7 @@ import AudioVisualizer from './AudioVisualizer';
 import AudioPlayer from './AudioPlayer';
 import './AudioRecorder.css';
 
-const AudioRecorder = ({ onTranscription, onStatus, onRecordingStateChange, loadedAudioPath }) => {
+const AudioRecorder = ({ onTranscription, onStatus, onRecordingStateChange, loadedAudioPath, audioDuration }) => {
   const [isRecording, setIsRecording] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isLoadingModel, setIsLoadingModel] = useState(false);
@@ -372,7 +372,11 @@ const AudioRecorder = ({ onTranscription, onStatus, onRecordingStateChange, load
 
       {/* Audio Player - shown after recording completes or when loaded transcription has audio */}
       {!isRecording && loadedAudioPath && (
-        <AudioPlayer audioUrl={loadedAudioPath} />
+        <AudioPlayer
+          key={`${loadedAudioPath}-${audioDuration || 'no-duration'}`}
+          audioUrl={loadedAudioPath}
+          durationSeconds={audioDuration}
+        />
       )}
     </div>
   );
