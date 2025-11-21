@@ -190,6 +190,10 @@ const AudioRecorder = ({ onTranscription, onStatus, onRecordingStateChange, load
         await wsClient.connect(selectedModel);
       }
 
+      // Always send channel selection when starting recording
+      // This ensures the channel is set even if WebSocket reconnected
+      wsClient.setChannel(selectedChannel);
+
       setStatus('Connected');
 
       // Request microphone access with stereo support
