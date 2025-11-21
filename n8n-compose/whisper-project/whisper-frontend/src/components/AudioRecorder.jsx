@@ -195,10 +195,11 @@ const AudioRecorder = ({ onTranscription, onStatus, onRecordingStateChange, load
       // Request microphone access with stereo support
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
+          echoCancellation: false,     // Disable echo cancellation for cleaner audio
+          noiseSuppression: false,     // Disable noise suppression to prevent distortion
+          autoGainControl: false,      // Disable automatic gain control (AGC) - uses system volume
           sampleRate: 16000,
-          channelCount: 2, // Request stereo audio
+          channelCount: 2,             // Request stereo audio
         }
       });
 
