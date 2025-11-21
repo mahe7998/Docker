@@ -19,6 +19,11 @@ const AudioRecorder = ({ onTranscription, onStatus, onRecordingStateChange, load
     const savedModel = localStorage.getItem('whisper-selected-model');
     return savedModel || 'mlx-community/whisper-tiny';
   });
+  const [selectedChannel, setSelectedChannel] = useState(() => {
+    // Load saved channel from localStorage, or default to 'both'
+    const savedChannel = localStorage.getItem('whisper-selected-channel');
+    return savedChannel || 'both';
+  });
   const [audioUrl, setAudioUrl] = useState(null);
   const [recordingCompleted, setRecordingCompleted] = useState(false);
 
@@ -43,6 +48,9 @@ const AudioRecorder = ({ onTranscription, onStatus, onRecordingStateChange, load
       try {
         // Status updates will come from WebSocket status handler
         await wsClient.connect(selectedModel);
+
+        // Send channel selection after model is loaded
+        wsClient.setChannel(selectedChannel);
 
         // Model is ready - clear loading state
         setIsLoadingModel(false);
@@ -145,6 +153,9 @@ const AudioRecorder = ({ onTranscription, onStatus, onRecordingStateChange, load
       // Status updates will come from WebSocket status handler
       await wsClient.connect(newModel);
 
+      // Send channel selection after model is loaded
+      wsClient.setChannel(selectedChannel);
+
       // Model is ready - clear loading state
       setIsLoadingModel(false);
     } catch (error) {
@@ -152,6 +163,19 @@ const AudioRecorder = ({ onTranscription, onStatus, onRecordingStateChange, load
       setStatus(`Error: ${error.message}`);
       setIsLoadingModel(false);
     }
+  };
+
+  // Handle channel selection change
+  const handleChannelChange = (newChannel) => {
+    setSelectedChannel(newChannel);
+
+    // Save selected channel to localStorage
+    localStorage.setItem('whisper-selected-channel', newChannel);
+
+    // Send channel selection to WebSocket if connected
+    wsClient.setChannel(newChannel);
+
+    console.log(`Channel changed to: ${newChannel}`);
   };
 
   // Start recording
@@ -352,6 +376,21 @@ const AudioRecorder = ({ onTranscription, onStatus, onRecordingStateChange, load
             <option value="mlx-community/whisper-medium-mlx">Medium (Best, 1.5GB)</option>
             <option value="mlx-community/whisper-large-v3-mlx">Large V3 (Highest Accuracy, 3GB)</option>
             <option value="mlx-community/whisper-large-v3-turbo">Turbo (Fast + Accurate, 809MB)</option>
+          </select>
+        </div>
+
+        <div className="channel-selector">
+          <label htmlFor="channel-select">Audio Channel:</label>
+          <select
+            id="channel-select"
+            value={selectedChannel}
+            onChange={(e) => handleChannelChange(e.target.value)}
+            disabled={isRecording || isConnecting || isLoadingModel}
+            className="channel-select"
+          >
+            <option value="both">Both Channels (Mixed)</option>
+            <option value="left">Left Channel Only</option>
+            <option value="right">Right Channel Only</option>
           </select>
         </div>
 

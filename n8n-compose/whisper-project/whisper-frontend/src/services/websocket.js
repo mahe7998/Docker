@@ -172,6 +172,25 @@ class TranscriptionWebSocket {
   }
 
   /**
+   * Set channel selection for transcription
+   * @param {string} channel - The channel to transcribe ('left', 'right', or 'both')
+   */
+  setChannel(channel) {
+    if (!this.isConnected || !this.ws) {
+      console.error('WebSocket not connected');
+      return;
+    }
+
+    const message = {
+      type: 'set_channel',
+      channel: channel,
+    };
+
+    console.log('Sending channel selection:', channel);
+    this.ws.send(JSON.stringify(message));
+  }
+
+  /**
    * Add event listener
    */
   on(event, callback) {
