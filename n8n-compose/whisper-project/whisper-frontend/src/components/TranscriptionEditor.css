@@ -93,8 +93,8 @@
   background-color: var(--color-bg);
   border: 1px solid var(--color-border);
   border-radius: var(--border-radius);
-  min-height: 400px;
-  max-height: 600px;
+  min-height: 200px;
+  max-height: 300px;
   overflow-y: auto;
   margin-bottom: var(--spacing-md);
 }
@@ -106,7 +106,7 @@
 /* TipTap Editor Styles */
 .editor-content .ProseMirror {
   outline: none;
-  min-height: 350px;
+  min-height: 150px;
   color: var(--color-text);
   line-height: 1.8;
 }
