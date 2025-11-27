@@ -345,7 +345,7 @@ TS_AUTHKEY=tskey-auth-...
 
 ## Security Considerations
 
-- n8n is **only accessible via your private Tailscale network**
+- n8n and Whisper are **only accessible via your private Tailscale network**
 - HTTPS enforced with automatic certificate management
 - Security headers enabled (HSTS, XSS protection, etc.)
 - Traefik dashboard exposed only on internal network
@@ -378,7 +378,7 @@ docker image prune
 
 ## Limitations
 
-- **Host Mac Access**: Cannot access n8n from the host Mac running the containers (Tailscale network conflict). Use other devices on your Tailscale network, or access via `http://localhost:5678`.
+- **Local n8n Access**: For local testing without Tailscale, n8n is also available at `http://localhost:5678`.
 - **Certificate Refresh**: Some Tailscale account changes require manually toggling HTTPS certificates (use `./refresh-certificates.sh`).
 - **Single Node**: This setup runs a single n8n instance (no clustering/HA).
 
