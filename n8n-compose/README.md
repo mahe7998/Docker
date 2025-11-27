@@ -1,15 +1,28 @@
 # n8n-compose
 
-Production-ready n8n workflow automation deployment with Docker Compose, Traefik reverse proxy, and Tailscale for automatic HTTPS certificates.
+Production-ready n8n workflow automation deployment with Docker Compose, Traefik reverse proxy, and Tailscale for automatic HTTPS certificates. Also includes a real-time audio transcription app powered by MLX-Whisper.
 
 ## Features
 
+### n8n Workflow Automation
 - **Secure Access**: HTTPS-enabled n8n accessible via Tailscale private network
 - **Zero Configuration SSL**: Automatic certificate provisioning and renewal via Tailscale
 - **Production Ready**: Traefik reverse proxy with security headers
 - **Persistent Data**: Workflow data and configurations preserved across restarts
 - **Local File Sharing**: Host directory mounted for file operations
 - **Automated Recovery**: Scripts for common troubleshooting scenarios
+
+### Whisper Transcription App (Apple Silicon)
+- **Real-time Transcription**: Browser-based audio recording with live transcription
+- **MLX Acceleration**: GPU-accelerated on Apple Silicon (M1/M2/M3)
+- **Audio Visualization**: Live waveform display during recording
+- **Audio Playback**: Play back recorded audio with seek and duration
+- **Start/Stop/Restart**: Multiple recordings in same session with audio concatenation
+- **Model Selection**: Choose whisper-tiny, base, small, or medium at runtime
+- **Stereo Channels**: Transcribe left, right, or both channels
+- **AI Review**: Grammar correction, rephrasing, summarization via Ollama
+- **PostgreSQL Storage**: Save/load transcriptions with full history
+- **Obsidian Integration**: Direct database access for note-taking workflows
 
 ## Quick Start
 
@@ -60,34 +73,113 @@ Production-ready n8n workflow automation deployment with Docker Compose, Traefik
    - ⚠️ Cannot access from the host Mac (use other Tailscale devices)
    - For local testing: `http://localhost:5678`
 
+## Whisper Transcription App Setup
+
+The Whisper transcription app requires an MLX-powered backend running on your Apple Silicon Mac for GPU acceleration.
+
+### Prerequisites
+
+- **Apple Silicon Mac** (M1, M2, or M3)
+- **Ollama** installed for AI review features: https://ollama.ai
+- **Python 3.11+** with venv
+
+### Installation
+
+1. **Clone the MLX-Whisper backend** (from the same GitHub user)
+   ```bash
+   cd ~/projects/python  # or your preferred location
+   git clone https://github.com/mahe7998/python.git
+   cd python/mlx_whisper
+   ```
+
+2. **Create and activate virtual environment**
+   ```bash
+   python3 -m venv venv
+   source venv/bin/activate
+   ```
+
+3. **Install dependencies**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+4. **Set the database password in your shell profile** (`.zshrc` or `.bashrc`)
+   ```bash
+   export WHISPER_DB_PASSWORD="your_secure_password_here"
+   ```
+
+5. **Start the Docker services** (database and frontend)
+   ```bash
+   cd ~/projects/docker/n8n-compose  # or wherever you cloned this repo
+   docker-compose up -d whisper-db whisper-frontend
+   ```
+
+6. **Start the MLX-Whisper backend**
+   ```bash
+   cd ~/projects/python/mlx_whisper && source venv/bin/activate && \
+     WHISPER_DB_PASSWORD="$WHISPER_DB_PASSWORD" \
+     DATABASE_URL="postgresql+asyncpg://whisper:${WHISPER_DB_PASSWORD}@localhost:5432/whisper" \
+     nohup uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload > /tmp/whisper_backend.log 2>&1 &
+   ```
+
+7. **Access the Whisper app**
+   - From any device on your Tailscale network
+   - Visit: `https://whisper.tail60cd1d.ts.net` (replace with your domain)
+
+### Verifying Installation
+
+```bash
+# Check backend health
+curl http://localhost:8000/health
+
+# Check backend logs
+tail -f /tmp/whisper_backend.log
+
+# Check Docker services
+docker-compose ps whisper-db whisper-frontend
+```
+
+For detailed usage instructions, see [whisper-project/README.md](whisper-project/README.md).
+
 ## Architecture
 
 ### Services
 
 ```
-┌─────────────────────────────────────────────────┐
-│                  Tailscale                      │
-│  - Runs in Docker sidecar container            │
-│  - Provides VPN connectivity to tailnet        │
-│  - Provisions HTTPS certificates               │
-│  - Exposes ports 80 & 443                      │
-└────────────┬────────────────────────────────────┘
-             │ (shared network stack)
-┌────────────┴────────────────────────────────────┐
-│                  Traefik                        │
-│  - Reverse proxy with automatic HTTPS          │
-│  - Native Tailscale certificate resolver       │
-│  - HTTP to HTTPS redirects                     │
-│  - Security headers (HSTS, XSS protection)     │
-└────────────┬────────────────────────────────────┘
-             │ (proxies to)
-┌────────────┴────────────────────────────────────┐
-│                    n8n                          │
-│  - Workflow automation platform                │
-│  - Persistent data storage                     │
-│  - Local file sharing enabled                  │
-│  - Runners enabled for workflow execution      │
-└─────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────┐
+│                           Tailscale                                 │
+│  - Runs in Docker sidecar container                                │
+│  - Provides VPN connectivity to tailnet                            │
+│  - Provisions HTTPS certificates                                   │
+│  - Exposes ports 80 & 443                                          │
+└──────────────────────────┬──────────────────────────────────────────┘
+                           │ (shared network stack)
+┌──────────────────────────┴──────────────────────────────────────────┐
+│                           Traefik                                   │
+│  - Reverse proxy with automatic HTTPS                              │
+│  - Native Tailscale certificate resolver                           │
+│  - Routes: n8n.*, whisper.*                                        │
+└──────────────────────────┬──────────────────────────────────────────┘
+                           │ (proxies to)
+          ┌────────────────┼────────────────────────┐
+          ▼                ▼                        ▼
+┌─────────────────┐ ┌─────────────────┐  ┌──────────────────────────┐
+│       n8n       │ │ Whisper Frontend│  │   MLX-Whisper Backend    │
+│    [Docker]     │ │    [Docker]     │  │       [Host Mac]         │
+│  :5678          │ │  React + TipTap │  │  FastAPI + MLX           │
+│  Workflows      │ │  Nginx          │  │  Apple Silicon GPU       │
+│  Automations    │ │  Audio Player   │  │  :8000                   │
+└─────────────────┘ └────────┬────────┘  └───────────┬──────────────┘
+                             │                       │
+                             └───────────┬───────────┘
+                                         │
+                    ┌────────────────────┼────────────────────┐
+                    ▼                    ▼                    ▼
+             ┌───────────┐        ┌───────────┐        ┌───────────┐
+             │ Postgres  │        │  Ollama   │        │  Audio    │
+             │ [Docker]  │        │  [Host]   │        │  Files    │
+             │  :5432    │        │  :11434   │        │  [Host]   │
+             └───────────┘        └───────────┘        └───────────┘
 ```
 
 ### Network Architecture
@@ -279,6 +371,8 @@ docker image prune
 - [n8n Documentation](https://docs.n8n.io/)
 - [Tailscale Documentation](https://tailscale.com/kb/)
 - [Traefik Documentation](https://doc.traefik.io/traefik/)
+- [Whisper Transcription App](whisper-project/README.md)
+- [MLX-Whisper Backend (GitHub)](https://github.com/mahe7998/python) - `mlx_whisper` directory
 - [Troubleshooting Guide](TROUBLESHOOTING.md)
 - [Project Configuration](CLAUDE.md)
 
