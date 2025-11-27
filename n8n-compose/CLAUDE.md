@@ -198,6 +198,30 @@ The whisper-backend runs natively on the host Mac (not in Docker) for MLX Apple 
 
 **NOTE**: The Docker-based whisper-backend (`whisper-project/whisper-backend/`) was removed as it's no longer used. All backend code is in the mlx_whisper project for Apple Silicon GPU acceleration.
 
+### Features
+
+**Recording & Transcription:**
+- **Real-time streaming transcription** via WebSocket with sliding window approach
+- **Start/Stop/Restart recording** - Multiple recordings in same session supported
+- **Audio concatenation** - Resume and append to previous recordings
+- **Model selection** - Choose from whisper-tiny, base, small, medium models
+- **Stereo channel selection** - Transcribe left, right, or both channels
+
+**Audio Playback:**
+- **Live audio visualization** - Waveform display during recording
+- **Audio player** - Play back recorded audio with seek, pause, duration display
+- **Previous transcription playback** - Load and play audio from saved transcriptions
+
+**Transcription Management:**
+- **Save/Load transcriptions** - PostgreSQL storage with full CRUD operations
+- **Unsaved changes warning** - Confirmation dialog when switching with unsaved work
+- **Transcription selector** - Dropdown to load previous transcriptions
+- **AI review** - Grammar correction, rephrasing, summarization via Ollama
+
+**Editor:**
+- **TipTap rich text editor** - Markdown editing with live preview
+- **Auto-scroll** - Editor follows new transcription text during recording
+
 ### Restarting Whisper Backend
 
 **IMPORTANT**: The whisper backend requires the `WHISPER_DB_PASSWORD` environment variable to connect to the database. When restarting, ensure this variable is set:

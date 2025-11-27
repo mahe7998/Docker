@@ -1,17 +1,45 @@
-# WhisperX Transcription System
+# Whisper Transcription System (MLX)
 
-A comprehensive real-time audio transcription system using WhisperX, with speaker diarization, AI-powered text review via Ollama, and Obsidian integration.
+A comprehensive real-time audio transcription system using MLX-Whisper on Apple Silicon, with AI-powered text review via Ollama, and Obsidian integration.
 
 ## Features
 
-- **Real-time Transcription**: Browser-based audio recording with WebSocket streaming to WhisperX
-- **Speaker Diarization**: Automatic speaker identification and labeling
-- **AI Review**: Ollama-powered grammar correction, rephrasing, summarization, and text improvement
-- **Rich Text Editor**: TipTap-based markdown editor with live preview
-- **Database Storage**: PostgreSQL storage for all transcriptions
-- **Obsidian Integration**: Direct database access for importing transcriptions into Obsidian
+### Recording & Transcription
+- **Real-time Streaming Transcription**: Browser-based audio recording with WebSocket streaming
+- **Sliding Window Approach**: Continuous transcription with intelligent text deduplication
+- **Start/Stop/Restart Recording**: Multiple recordings supported in the same session
+- **Audio Concatenation**: Resume and append new audio to previous recordings
+- **Model Selection**: Choose from whisper-tiny, base, small, or medium models at runtime
+- **Stereo Channel Selection**: Transcribe left channel, right channel, or mix both to mono
+- **Apple Silicon Optimized**: MLX acceleration for fast transcription on M1/M2/M3 Macs
+
+### Audio Playback & Visualization
+- **Live Audio Visualization**: Real-time waveform display during recording
+- **Audio Player**: Full-featured player with play/pause, seek, and duration display
+- **Previous Transcription Playback**: Load and play audio from any saved transcription
+- **WebM Audio Format**: Efficient browser-native audio format with proper duration metadata
+
+### Transcription Management
+- **Save/Load Transcriptions**: PostgreSQL storage with full CRUD operations
+- **Transcription Selector**: Dropdown to quickly load previous transcriptions
+- **Unsaved Changes Warning**: Confirmation dialog prevents accidental data loss
+- **Modification Tracking**: Track edit history and modification counts
+
+### AI-Powered Review
+- **Grammar Correction**: Fix spelling and grammar errors via Ollama
+- **Rephrasing**: Rewrite text in a more professional tone
+- **Summarization**: Create concise summaries of transcriptions
+- **Text Improvement**: Overall enhancement (grammar + clarity + flow)
+
+### Editor
+- **TipTap Rich Text Editor**: Markdown editing with live preview
+- **Auto-scroll**: Editor automatically follows new transcription text during recording
+- **Keyboard Shortcuts**: Standard editing shortcuts supported
+
+### Integration
+- **Obsidian Integration**: Direct database access for importing transcriptions
 - **Secure Access**: HTTPS via Tailscale with automatic certificate management
-- **Apple Silicon Optimized**: MPS (Metal Performance Shaders) acceleration for fast transcription
+- **REST API**: Full API for programmatic access
 
 ## Architecture
 
@@ -19,75 +47,92 @@ A comprehensive real-time audio transcription system using WhisperX, with speake
 ┌─────────────────────────────────────────┐
 │ Browser (Tailscale Network)             │
 │ https://whisper.tail60cd1d.ts.net       │
+│ - Audio Recording (MediaRecorder API)   │
+│ - Live Waveform Visualization           │
+│ - Audio Player with Seek/Duration       │
 └────────────┬────────────────────────────┘
              │
              ▼
 ┌─────────────────────────────────────────┐
-│ Traefik (Reverse Proxy)                 │
-│ - TLS termination                       │
-│ - Routing to frontend                   │
+│ Traefik (Reverse Proxy) [Docker]        │
+│ - TLS termination via Tailscale         │
+│ - Routing to frontend & backend         │
 └────────────┬────────────────────────────┘
              │
     ┌────────┴────────┐
     ▼                 ▼
-┌─────────┐    ┌─────────────┐
-│ Frontend│    │   Backend   │
-│ React   │◄──►│   FastAPI   │
-│ TipTap  │WS  │   WhisperX  │
-└─────────┘REST└──────┬──────┘
-                      │
-         ┌────────────┼────────────┐
-         ▼            ▼            ▼
-    ┌────────┐  ┌─────────┐  ┌─────────┐
-    │Postgres│  │ Ollama  │  │Audio    │
-    │  :5432 │  │ (Host)  │  │ Files   │
-    └───┬────┘  └─────────┘  └─────────┘
-        │
-        ▼
-    ┌────────┐
-    │Obsidian│
-    └────────┘
+┌─────────┐    ┌──────────────────┐
+│ Frontend│    │  MLX-Whisper     │
+│ React   │◄──►│  Backend (Host)  │
+│ TipTap  │WS  │  FastAPI + MLX   │
+│ [Docker]│REST│  Apple Silicon   │
+└─────────┘    └───────┬──────────┘
+                       │
+         ┌─────────────┼─────────────┐
+         ▼             ▼             ▼
+    ┌─────────┐  ┌──────────┐  ┌──────────┐
+    │Postgres │  │  Ollama  │  │  Audio   │
+    │ [Docker]│  │  (Host)  │  │  Files   │
+    │  :5432  │  │  :11434  │  │  (Host)  │
+    └────┬────┘  └──────────┘  └──────────┘
+         │
+         ▼
+    ┌─────────┐
+    │ Obsidian│
+    └─────────┘
 ```
+
+**Note**: The MLX-Whisper backend runs natively on the host Mac (not in Docker) for Apple Silicon GPU acceleration. See `~/projects/python/mlx_whisper/` for backend code.
 
 ## Prerequisites
 
-1. **Ollama** installed and running on host machine
+1. **Apple Silicon Mac** (M1/M2/M3) for MLX acceleration
+   - The backend uses MLX-Whisper for GPU-accelerated transcription
+
+2. **Ollama** installed and running on host machine
    - Install: https://ollama.ai
    - Default port: 11434
    - Pull a model: `ollama pull llama3.2`
 
-2. **Tailscale** configured for the n8n-compose stack
+3. **Tailscale** configured for the n8n-compose stack
    - See main README.md for Tailscale setup
 
-3. **HuggingFace Token** (optional, for speaker diarization)
-   - Create account at https://huggingface.co
-   - Generate token at https://huggingface.co/settings/tokens
-   - Add to `.env` as `HF_TOKEN`
+4. **Docker and Docker Compose** for frontend and database
 
-4. **Docker and Docker Compose**
+5. **Python 3.11+** with venv for the MLX backend
 
 ## Quick Start
 
 ### 1. Configure Environment Variables
 
-Edit `.env` file in the project root:
+Edit `.env` file in the n8n-compose directory:
 
 ```bash
 # Set a secure database password
 WHISPER_DB_PASSWORD=your_secure_password_here
-
-# Optional: Add HuggingFace token for speaker diarization
-HF_TOKEN=hf_your_token_here
 ```
 
-### 2. Start Services
+### 2. Start Docker Services (Database & Frontend)
 
 ```bash
 # From the n8n-compose directory
-docker-compose up -d whisper-db whisper-backend whisper-frontend
+docker-compose up -d whisper-db whisper-frontend
 ```
 
-### 3. Access the Web UI
+### 3. Start the MLX-Whisper Backend (on Host)
+
+```bash
+# Kill any existing backend process
+pkill -f "uvicorn app.main:app.*8000"
+
+# Start the backend with proper environment
+cd ~/projects/python/mlx_whisper && source venv/bin/activate && \
+  WHISPER_DB_PASSWORD="$WHISPER_DB_PASSWORD" \
+  DATABASE_URL="postgresql+asyncpg://whisper:${WHISPER_DB_PASSWORD}@localhost:5432/whisper" \
+  nohup uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload > /tmp/whisper_backend.log 2>&1 &
+```
+
+### 4. Access the Web UI
 
 Open in your browser (from any device on your Tailscale network):
 ```
@@ -98,17 +143,33 @@ https://whisper.tail60cd1d.ts.net
 
 ### Recording and Transcribing
 
-1. **Click "Start Recording"** in the web interface
-2. Grant microphone permissions when prompted
-3. Speak into your microphone
-4. Transcription appears in real-time in the editor (5-10 second delay)
-5. **Click "Stop Recording"** when done
+1. **Select a Whisper model** from the dropdown (tiny, base, small, medium)
+2. **Select audio channel** if recording stereo (left, right, or both)
+3. **Click "Start Recording"** - grant microphone permissions when prompted
+4. **Watch the live waveform** visualization as you speak
+5. **Transcription appears in real-time** in the editor (~6-9 second segments)
+6. **Click "Stop Recording"** when done - final audio chunk is transcribed
+7. **Restart recording** to continue adding to the same transcription
+
+### Audio Playback
+
+- **After recording**: Audio player appears with your recorded audio
+- **Play/Pause**: Click the play button to listen back
+- **Seek**: Click anywhere on the progress bar to jump to that position
+- **Duration display**: Shows current time and total duration
+
+### Loading Previous Transcriptions
+
+1. **Use the dropdown** at the top to select a saved transcription
+2. **Warning dialog** appears if you have unsaved changes
+3. **Audio switches** to the selected transcription's recording
+4. **Play back** the original audio while viewing/editing the text
 
 ### Editing Transcriptions
 
 - **Edit Text**: Click in the editor and type/modify as needed
+- **Auto-scroll**: Editor follows new text during recording (can be toggled)
 - **Preview**: Click "Preview" button to see formatted markdown
-- **Speaker Labels**: Edit speaker names (SPEAKER_00 → John, etc.)
 
 ### AI Review Features
 
@@ -118,13 +179,14 @@ Use the AI toolbar buttons to:
 - **Summarize**: Create a concise summary
 - **Improve**: Overall text enhancement (grammar + clarity + flow)
 
-All AI features use your local Ollama instance.
+All AI features use your local Ollama instance (llama3.2 by default).
 
 ### Saving Transcriptions
 
 1. Enter a title in the title field
 2. Click "Save to Database"
-3. Transcription is stored in PostgreSQL
+3. Transcription and audio file path are stored in PostgreSQL
+4. **Audio concatenation**: If you save, then record more, the new audio is appended
 
 ## Obsidian Integration
 
@@ -161,27 +223,31 @@ LIMIT 10;
 
 ## Configuration
 
-### WhisperX Model Selection
+### MLX-Whisper Model Selection
 
-Edit `.env` to choose a different model:
+Models can be selected at runtime via the web UI dropdown. Available models:
 
-```bash
-# Options: tiny, base, small, medium, large-v2
-WHISPER_MODEL=base
-```
+| Model | Size | Speed | Accuracy |
+|-------|------|-------|----------|
+| `mlx-community/whisper-tiny` | 71 MB | Fastest | Good for quick notes |
+| `mlx-community/whisper-base` | 138 MB | Fast | **Recommended** |
+| `mlx-community/whisper-small` | 461 MB | Medium | Better accuracy |
+| `mlx-community/whisper-medium` | 1.4 GB | Slower | High accuracy |
 
-**Model Recommendations:**
-- `tiny`: Fastest, lowest accuracy
-- `base`: **Recommended** - Good balance
-- `small`: Better accuracy, still reasonably fast
-- `medium`: High accuracy, slower
-- `large-v2`: Best accuracy, slowest
+Models are downloaded automatically from HuggingFace on first use.
+
+### Stereo Channel Selection
+
+For stereo recordings (e.g., from audio interfaces), select which channel to transcribe:
+- **Both**: Mix left and right channels to mono (default)
+- **Left**: Transcribe only left channel
+- **Right**: Transcribe only right channel
 
 ### Ollama Model
 
 The default Ollama model is `llama3.2`. To change:
 
-Edit `whisper-backend/app/ollama_client.py`:
+Edit `~/projects/python/mlx_whisper/app/ollama_client.py`:
 ```python
 default_model: str = "llama3.2",  # Change to your preferred model
 ```
@@ -190,15 +256,16 @@ Available models: https://ollama.ai/library
 
 ### Performance Tuning
 
-#### Apple Silicon (MPS)
-- Already optimized by default
-- 3-5x faster than CPU
-- Use `base` or `small` model for best real-time performance
+#### Apple Silicon (MLX)
+- Uses Metal Performance Shaders via MLX framework
+- 5-10x faster than CPU-only transcription
+- Use `tiny` or `base` model for best real-time performance
 
-#### Transcription Chunk Size
-Edit `whisper-backend/app/routers/websocket.py`:
+#### Transcription Window Settings
+Edit `~/projects/python/mlx_whisper/app/routers/websocket.py`:
 ```python
-self.chunk_duration_threshold = 5.0  # Seconds (default: 5)
+self.chunk_duration_threshold = 6.0  # Seconds between transcriptions
+self.window_seconds = 9.0            # Audio window size for each transcription
 ```
 
 Lower values = more frequent updates (but more processing overhead)
@@ -291,18 +358,26 @@ Lower values = more frequent updates (but more processing overhead)
 
 ## Development
 
-### Backend Development
+### Backend Development (MLX-Whisper)
 
 ```bash
-cd whisper-project/whisper-backend
+cd ~/projects/python/mlx_whisper
+
+# Create virtual environment (if not exists)
+python3 -m venv venv
+source venv/bin/activate
 
 # Install dependencies
 pip install -r requirements.txt
 
 # Run locally
-export DATABASE_URL=postgresql+asyncpg://whisper:password@localhost:5432/whisper
+export WHISPER_DB_PASSWORD=your_password
+export DATABASE_URL=postgresql+asyncpg://whisper:${WHISPER_DB_PASSWORD}@localhost:5432/whisper
 export OLLAMA_BASE_URL=http://localhost:11434
-python -m uvicorn app.main:app --reload
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+
+# View logs
+tail -f /tmp/whisper_backend.log
 ```
 
 ### Frontend Development
@@ -313,9 +388,14 @@ cd whisper-project/whisper-frontend
 # Install dependencies
 npm install
 
-# Run dev server
+# Run dev server (for local development)
 npm run dev
+
+# Build and deploy to Docker
+docker-compose build --no-cache whisper-frontend && docker-compose up -d whisper-frontend
 ```
+
+**Important**: Always use `--no-cache` when rebuilding the frontend to ensure code changes are included.
 
 ## Database Schema
 
@@ -336,11 +416,13 @@ CREATE TABLE transcriptions (
 
 ## Credits
 
-- **WhisperX**: https://github.com/m-bain/whisperx
+- **MLX-Whisper**: https://github.com/ml-explore/mlx-examples/tree/main/whisper
+- **MLX**: https://github.com/ml-explore/mlx (Apple's ML framework for Apple Silicon)
 - **Ollama**: https://ollama.ai
 - **TipTap**: https://tiptap.dev
 - **FastAPI**: https://fastapi.tiangolo.com
 - **Tailscale**: https://tailscale.com
+- **React**: https://react.dev
 
 ## License
 
