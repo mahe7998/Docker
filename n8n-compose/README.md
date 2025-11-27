@@ -78,11 +78,11 @@ Replace `<your-tailnet>` with your Tailscale tailnet name (e.g., `tail60cd1d`).
    docker-compose up -d
    ```
 
-7. **Access n8n**
-   - From any device on your Tailscale network
-   - Visit: `https://n8n.tail60cd1d.ts.net` (replace with your domain)
-   - ⚠️ Cannot access from the host Mac (use other Tailscale devices)
-   - For local testing: `http://localhost:5678`
+7. **Access the apps**
+   - From any device on your Tailscale network:
+     - **n8n**: `https://n8n.<your-tailnet>.ts.net`
+     - **Whisper**: `https://whisper.<your-tailnet>.ts.net`
+   - For local n8n testing: `http://localhost:5678`
 
 ## Whisper Transcription App Setup
 
