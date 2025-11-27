@@ -172,25 +172,30 @@ For detailed usage instructions, see [whisper-project/README.md](whisper-project
 │  - Routes: n8n.*, whisper.*                                        │
 └──────────────────────────┬──────────────────────────────────────────┘
                            │ (proxies to)
-          ┌────────────────┼────────────────────────┐
-          ▼                ▼                        ▼
-┌─────────────────┐ ┌─────────────────┐  ┌──────────────────────────┐
-│       n8n       │ │ Whisper Frontend│  │   MLX-Whisper Backend    │
-│    [Docker]     │ │    [Docker]     │  │       [Host Mac]         │
-│  :5678          │ │  React + TipTap │  │  FastAPI + MLX           │
-│  Workflows      │ │  Nginx          │  │  Apple Silicon GPU       │
-│  Automations    │ │  Audio Player   │  │  :8000                   │
-└─────────────────┘ └────────┬────────┘  └───────────┬──────────────┘
-                             │                       │
-                             └───────────┬───────────┘
-                                         │
-                    ┌────────────────────┼────────────────────┐
-                    ▼                    ▼                    ▼
-             ┌───────────┐        ┌───────────┐        ┌───────────┐
-             │ Postgres  │        │  Ollama   │        │  Audio    │
-             │ [Docker]  │        │  [Host]   │        │  Files    │
-             │  :5432    │        │  :11434   │        │  [Host]   │
-             └───────────┘        └───────────┘        └───────────┘
+              ┌────────────┴────────────┐
+              ▼                         ▼
+┌─────────────────────┐      ┌─────────────────────────────────────┐
+│         n8n         │      │         Whisper Frontend            │
+│      [Docker]       │      │            [Docker]                 │
+│       :5678         │      │  React + TipTap + Audio Player      │
+│  Workflows          │      │            Nginx                    │
+│  Automations        │      └──────────────────┬──────────────────┘
+└─────────────────────┘                         │ (proxies to host)
+                                                ▼
+                              ┌──────────────────────────────────────┐
+                              │        MLX-Whisper Backend           │
+                              │           [Host Mac]                 │
+                              │  FastAPI + MLX + Apple Silicon GPU   │
+                              │              :8000                   │
+                              └──────────────────┬───────────────────┘
+                                                 │
+                    ┌────────────────────────────┼────────────────────┐
+                    ▼                            ▼                    ▼
+             ┌───────────┐                ┌───────────┐        ┌───────────┐
+             │ Postgres  │                │  Ollama   │        │  Audio    │
+             │ [Docker]  │                │  [Host]   │        │  Files    │
+             │  :5432    │                │  :11434   │        │  [Host]   │
+             └───────────┘                └───────────┘        └───────────┘
 ```
 
 ### Network Architecture
