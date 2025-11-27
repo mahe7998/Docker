@@ -11,7 +11,7 @@ A comprehensive real-time audio transcription system using MLX-Whisper on Apple 
 - **Audio Concatenation**: Resume and append new audio to previous recordings
 - **Model Selection**: Choose from whisper-tiny, base, small, or medium models at runtime
 - **Stereo Channel Selection**: Transcribe left channel, right channel, or mix both to mono
-- **Apple Silicon Optimized**: MLX acceleration for fast transcription on M1/M2/M3 Macs
+- **Apple Silicon Optimized**: MLX acceleration for fast transcription on M1 or later Macs
 
 ### Audio Playback & Visualization
 - **Live Audio Visualization**: Real-time waveform display during recording
@@ -86,7 +86,7 @@ A comprehensive real-time audio transcription system using MLX-Whisper on Apple 
 
 ## Prerequisites
 
-1. **Apple Silicon Mac** (M1/M2/M3) for MLX acceleration
+1. **Apple Silicon Mac** (M1 or later) for MLX acceleration
    - The backend uses MLX-Whisper for GPU-accelerated transcription
 
 2. **Ollama** installed and running on host machine

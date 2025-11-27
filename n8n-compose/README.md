@@ -14,7 +14,7 @@ Production-ready n8n workflow automation deployment with Docker Compose, Traefik
 
 ### Whisper Transcription App (Apple Silicon)
 - **Real-time Transcription**: Browser-based audio recording with live transcription
-- **MLX Acceleration**: GPU-accelerated on Apple Silicon (M1/M2/M3)
+- **MLX Acceleration**: GPU-accelerated on Apple Silicon (M1 or later)
 - **Audio Visualization**: Live waveform display during recording
 - **Audio Playback**: Play back recorded audio with seek and duration
 - **Start/Stop/Restart**: Multiple recordings in same session with audio concatenation
@@ -90,7 +90,7 @@ The Whisper transcription app requires an MLX-powered backend running on your Ap
 
 ### Prerequisites
 
-- **Apple Silicon Mac** (M1, M2, or M3)
+- **Apple Silicon Mac** (M1 or later)
 - **Ollama** installed for AI review features: https://ollama.ai
 - **Python 3.11+** with venv
 
