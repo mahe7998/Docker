@@ -24,6 +24,19 @@ Production-ready n8n workflow automation deployment with Docker Compose, Traefik
 - **PostgreSQL Storage**: Save/load transcriptions with full history
 - **Obsidian Integration**: Direct database access for note-taking workflows
 
+## Access URLs
+
+Both apps are accessible via your Tailscale network with automatic HTTPS:
+
+| App | URL | Description |
+|-----|-----|-------------|
+| **n8n** | `https://n8n.<your-tailnet>.ts.net` | Workflow automation platform |
+| **Whisper** | `https://whisper.<your-tailnet>.ts.net` | Audio transcription app |
+
+Replace `<your-tailnet>` with your Tailscale tailnet name (e.g., `tail60cd1d`).
+
+**Note**: Access from any device on your Tailscale network. Cannot access from the host Mac running the containers (use `http://localhost:5678` for local n8n testing).
+
 ## Quick Start
 
 ### Prerequisites
