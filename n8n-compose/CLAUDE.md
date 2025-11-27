@@ -189,3 +189,50 @@ All configuration is in `.env`:
 - Traefik fetches certificates from the Tailscale sidecar (no separate renewal needed)
 - Certificates are valid for 90 days and automatically renewed by Tailscale
 - Traefik monitors certificate expiry and refreshes 14 days before expiration
+
+## Whisper Transcription Service
+
+The whisper-backend runs natively on the host Mac (not in Docker) for MLX Apple Silicon GPU acceleration. The frontend runs in Docker and proxies to the host.
+
+**Backend Location**: `~/projects/python/mlx_whisper/` (separate git repository)
+
+**NOTE**: The Docker-based whisper-backend (`whisper-project/whisper-backend/`) was removed as it's no longer used. All backend code is in the mlx_whisper project for Apple Silicon GPU acceleration.
+
+### Restarting Whisper Backend
+
+**IMPORTANT**: The whisper backend requires the `WHISPER_DB_PASSWORD` environment variable to connect to the database. When restarting, ensure this variable is set:
+
+```bash
+# Kill existing process
+pkill -f "uvicorn app.main:app.*8000"
+
+# Restart with proper environment (from n8n-compose directory)
+cd ~/projects/python/mlx_whisper && source venv/bin/activate && \
+  WHISPER_DB_PASSWORD="$WHISPER_DB_PASSWORD" \
+  DATABASE_URL="postgresql+asyncpg://whisper:${WHISPER_DB_PASSWORD}@localhost:5432/whisper" \
+  nohup uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload > /tmp/whisper_backend.log 2>&1 &
+
+# Also restart whisper-db if needed
+docker-compose restart whisper-db
+```
+
+### Troubleshooting "Failed to load transcriptions"
+
+If the web app shows "Failed to load transcriptions":
+1. Check if backend is running: `curl http://localhost:8000/health`
+2. If you see `[Errno 8] nodename nor servname provided` in logs, the `WHISPER_DB_PASSWORD` env var is missing
+3. Restart the backend with the proper environment as shown above
+4. May also need to restart `whisper-db`: `docker-compose restart whisper-db`
+
+### Rebuilding Frontend After Code Changes
+
+**IMPORTANT**: When making changes to the whisper-frontend React code, a simple `docker-compose restart` is NOT sufficient. The frontend is built during the Docker image build process, so you MUST rebuild with `--no-cache`:
+
+```bash
+# ALWAYS use --no-cache when updating frontend code
+docker-compose build --no-cache whisper-frontend && docker-compose up -d whisper-frontend
+```
+
+After rebuilding, users should also clear their browser cache or do a hard refresh (Cmd+Shift+R on Mac, Ctrl+Shift+R on Windows/Linux) to load the new JavaScript bundle.
+
+**Why --no-cache is required**: Docker may cache the `COPY . .` layer if file timestamps haven't changed significantly, resulting in stale code being served even after edits.

@@ -16,19 +16,38 @@ function App() {
   const [isModified, setIsModified] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [audioFilePath, setAudioFilePath] = useState(null);
+  const [audioDurationSeconds, setAudioDurationSeconds] = useState(null);  // Duration from backend
+  const [hasUnsavedRecording, setHasUnsavedRecording] = useState(false);  // Track if current recording is unsaved
   const editorRef = useRef(null);
+  const isSelectingTranscriptionRef = useRef(false);  // Prevent audioUrl overwrite during selection
 
   // Handle recording state changes
   // useCallback ensures this function reference stays stable across re-renders
-  const handleRecordingStateChange = useCallback((recording, audioUrl) => {
+  const handleRecordingStateChange = useCallback((recording, audioUrl, selectedTranscriptionWithAudio, durationSeconds) => {
     setIsRecording(recording);
     if (recording) {
-      // Clear previous transcription when starting new recording
-      setTranscriptionData(null);
-      setAudioFilePath(null);
+      // Only clear if starting a completely new recording (no loaded transcription with audio)
+      // A transcription must have an audio_file_path to be resumable
+      if (!selectedTranscriptionWithAudio) {
+        setTranscriptionData(null);
+        setAudioFilePath(null);
+        setAudioDurationSeconds(null);
+      }
+      // If resuming an existing transcription that has audio, keep the data and ID
     } else if (audioUrl) {
-      // Recording stopped - save audio URL
+      // Skip if we're in the middle of selecting a different transcription
+      // This prevents the old session's audioUrl from overwriting the newly selected one
+      if (isSelectingTranscriptionRef.current) {
+        console.log('[App.jsx] Skipping audioUrl update - transcription selection in progress');
+        return;
+      }
+      // Recording stopped - save audio URL and duration from backend
       setAudioFilePath(audioUrl);
+      setHasUnsavedRecording(true);  // Mark as unsaved
+      if (durationSeconds !== null && durationSeconds !== undefined) {
+        console.log('App.jsx: Setting audio duration from backend:', durationSeconds, 'seconds');
+        setAudioDurationSeconds(durationSeconds);
+      }
     }
   }, []);
 
@@ -81,10 +100,21 @@ function App() {
   // Handle successful save
   const handleSave = (data) => {
     console.log('Transcription saved:', data);
+    console.log('Audio file path from saved data:', data.audio_file_path);
     setStatusMessage('Transcription saved to database!');
     setIsModified(false);  // Reset modification flag after save
+    setHasUnsavedRecording(false);  // Clear unsaved recording flag after save
     setSelectedTranscription(data);  // Update selected transcription with saved data
     setRefreshTrigger(prev => prev + 1);  // Trigger refresh of transcription list
+
+    // Update audioFilePath if the saved transcription has audio
+    // This enables audio concatenation for subsequent recordings
+    if (data.audio_file_path) {
+      console.log('Setting audioFilePath to:', data.audio_file_path);
+      setAudioFilePath(data.audio_file_path);
+    } else {
+      console.log('No audio_file_path in saved data - concatenation will not work');
+    }
 
     setTimeout(() => {
       setStatusMessage('');
@@ -93,7 +123,32 @@ function App() {
 
   // Handle transcription selection from dropdown
   const handleTranscriptionSelect = async (transcription) => {
+    // Check for unsaved changes before switching
+    if (transcription && (hasUnsavedRecording || isModified) && !selectedTranscription) {
+      // We have an unsaved new recording and user is trying to load a different transcription
+      const confirmed = window.confirm(
+        'You have an unsaved recording. If you switch to a different transcription, your current recording and transcription will be lost.\n\nDo you want to continue?'
+      );
+      if (!confirmed) {
+        return;  // User cancelled, don't switch
+      }
+    } else if (transcription && isModified && selectedTranscription && transcription.id !== selectedTranscription.id) {
+      // User modified an existing transcription and is switching to another
+      const confirmed = window.confirm(
+        'You have unsaved changes to this transcription. If you switch to a different transcription, your changes will be lost.\n\nDo you want to continue?'
+      );
+      if (!confirmed) {
+        return;  // User cancelled, don't switch
+      }
+    }
+
+    // Set flag to prevent audioUrl overwrite from useEffect
+    isSelectingTranscriptionRef.current = true;
+
     if (transcription) {
+      console.log('[App.jsx] Selected transcription:', transcription.id);
+      console.log('[App.jsx] audio_file_path:', transcription.audio_file_path);
+      console.log('[App.jsx] duration_seconds:', transcription.duration_seconds);
       setSelectedTranscription(transcription);
       setTranscriptionData({
         text: transcription.current_content_md || transcription.content_md,
@@ -101,20 +156,32 @@ function App() {
         final: true,
       });
       setAudioFilePath(transcription.audio_file_path || null);
+      setAudioDurationSeconds(transcription.duration_seconds || null);
       setIsModified(false);
+      setHasUnsavedRecording(false);  // Clear unsaved flag when loading saved transcription
     } else {
-      // Clear selection
+      // Clear selection (starting new)
       setSelectedTranscription(null);
       setTranscriptionData(null);
       setAudioFilePath(null);
+      setAudioDurationSeconds(null);
       setIsModified(false);
+      setHasUnsavedRecording(false);
     }
+
+    // Clear the flag after state updates have been scheduled
+    // Use setTimeout to ensure React has processed the state updates
+    setTimeout(() => {
+      isSelectingTranscriptionRef.current = false;
+    }, 100);
   };
 
   // Handle transcription deletion
   const handleDelete = () => {
     setSelectedTranscription(null);
     setTranscriptionData(null);
+    setAudioFilePath(null);
+    setAudioDurationSeconds(null);
     setIsModified(false);
     setRefreshTrigger(prev => prev + 1);  // Trigger refresh of transcription list
     setStatusMessage('Transcription deleted');
@@ -157,6 +224,7 @@ function App() {
             onRecordingStateChange={handleRecordingStateChange}
             loadedAudioPath={audioFilePath}
             audioDuration={selectedTranscription?.duration_seconds}
+            resumeTranscriptionId={selectedTranscription?.id}
           />
 
           {/* Transcription Editor */}
@@ -167,6 +235,7 @@ function App() {
             isRecording={isRecording}
             isModified={isModified}
             audioFilePath={audioFilePath}
+            audioDurationSeconds={audioDurationSeconds}
             onSave={handleSave}
             onDelete={handleDelete}
             onContentChange={handleContentChange}

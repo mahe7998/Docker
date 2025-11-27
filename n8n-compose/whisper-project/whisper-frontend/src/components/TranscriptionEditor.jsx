@@ -18,6 +18,7 @@ const TranscriptionEditor = ({
   isRecording,
   isModified,
   audioFilePath,
+  audioDurationSeconds,
   onSave,
   onDelete,
   onContentChange
@@ -318,20 +319,31 @@ const TranscriptionEditor = ({
           content_md: contentMd,
           title: proposedSummary,
         };
+        // If there's new audio (from resume recording), update audio path and duration
+        if (audioFilePath && audioFilePath !== selectedTranscription.audio_file_path) {
+          updateData.audio_file_path = audioFilePath;
+          console.log('Updating audio_file_path to:', audioFilePath);
+        }
+        if (audioDurationSeconds && audioDurationSeconds !== selectedTranscription.duration_seconds) {
+          updateData.duration_seconds = audioDurationSeconds;
+          console.log('Updating duration_seconds to:', audioDurationSeconds);
+        }
         result = await transcriptionAPI.update(selectedTranscription.id, updateData);
         setSaveStatus('Updated!');
       } else {
         // Create new transcription
+        // Use audioDurationSeconds from backend (includes concatenated duration for resume)
         const createData = {
           title: proposedSummary,
           content_md: contentMd,
-          duration_seconds: transcriptionData?.duration || 0,
+          duration_seconds: audioDurationSeconds || 0,
           speaker_map: {},
           audio_file_path: audioFilePath,
           metadata: {
             created_via: 'web_interface',
           },
         };
+        console.log('Creating transcription with duration:', audioDurationSeconds, 'audio_file_path:', audioFilePath);
         result = await transcriptionAPI.create(createData);
         setSaveStatus('Saved!');
       }

@@ -191,6 +191,44 @@ class TranscriptionWebSocket {
   }
 
   /**
+   * Set transcription to resume (for appending audio)
+   * @param {number} transcriptionId - The ID of the transcription to resume
+   */
+  setResumeTranscription(transcriptionId) {
+    if (!this.isConnected || !this.ws) {
+      console.error('WebSocket not connected');
+      return;
+    }
+
+    const message = {
+      type: 'set_resume_transcription',
+      transcription_id: transcriptionId,
+    };
+
+    console.log('Setting resume transcription ID:', transcriptionId);
+    this.ws.send(JSON.stringify(message));
+  }
+
+  /**
+   * Set audio file to resume from (for appending audio without database record)
+   * @param {string} audioPath - The API path to the audio file
+   */
+  setResumeAudio(audioPath) {
+    if (!this.isConnected || !this.ws) {
+      console.error('WebSocket not connected');
+      return;
+    }
+
+    const message = {
+      type: 'set_resume_audio',
+      audio_path: audioPath,
+    };
+
+    console.log('Setting resume audio path:', audioPath);
+    this.ws.send(JSON.stringify(message));
+  }
+
+  /**
    * Add event listener
    */
   on(event, callback) {

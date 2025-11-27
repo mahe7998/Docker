@@ -8,7 +8,7 @@ import AudioVisualizer from './AudioVisualizer';
 import AudioPlayer from './AudioPlayer';
 import './AudioRecorder.css';
 
-const AudioRecorder = ({ onTranscription, onStatus, onRecordingStateChange, loadedAudioPath, audioDuration }) => {
+const AudioRecorder = ({ onTranscription, onStatus, onRecordingStateChange, loadedAudioPath, audioDuration, resumeTranscriptionId }) => {
   const [isRecording, setIsRecording] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isLoadingModel, setIsLoadingModel] = useState(false);
@@ -26,19 +26,89 @@ const AudioRecorder = ({ onTranscription, onStatus, onRecordingStateChange, load
   });
   const [audioUrl, setAudioUrl] = useState(null);
   const [recordingCompleted, setRecordingCompleted] = useState(false);
+  const [recordedDuration, setRecordedDuration] = useState(null);  // Duration from backend after recording
 
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
   const timerIntervalRef = useRef(null);
   const streamRef = useRef(null);
   const disconnectTimeoutRef = useRef(null);
+  const currentTranscriptionIdRef = useRef(null);  // Track current transcription ID
 
   // Notify parent when recording state changes or audio URL is available
   useEffect(() => {
     if (onRecordingStateChange) {
-      onRecordingStateChange(isRecording, audioUrl);
+      // Pass true if we have audio to resume from (either from DB or unsaved)
+      // This prevents clearing transcription data when resuming
+      const hasAudioToResume = loadedAudioPath ? true : false;
+      // Include duration from backend (total duration including any concatenated audio)
+      // Only pass audioUrl if it's from current session (not when loadedAudioPath changed from selecting a transcription)
+      onRecordingStateChange(isRecording, audioUrl, hasAudioToResume, recordedDuration);
     }
-  }, [isRecording, audioUrl, onRecordingStateChange]);
+  }, [isRecording, audioUrl, onRecordingStateChange, recordedDuration]);
+  // Note: removed loadedAudioPath and resumeTranscriptionId from dependencies
+  // Those changes are handled by handleTranscriptionSelect in App.jsx directly
+
+  // Detect when transcription changes (switching to different transcription or starting new)
+  useEffect(() => {
+    const prevId = currentTranscriptionIdRef.current;
+    const currentId = resumeTranscriptionId;
+
+    // Determine if this is a real context change that requires reconnection
+    let shouldReconnect = false;
+    let shouldClearAudioUrl = false;
+
+    if (prevId === null && currentId === undefined) {
+      // null -> undefined: no change
+      shouldReconnect = false;
+    } else if (prevId === undefined && currentId) {
+      // undefined -> ID: first time assigning after save, don't reconnect
+      shouldReconnect = false;
+    } else if (prevId === null && currentId) {
+      // null -> ID: first time assigning after save, don't reconnect
+      shouldReconnect = false;
+    } else if (prevId && currentId === null) {
+      // ID -> null: clearing selection, reconnect
+      shouldReconnect = true;
+      shouldClearAudioUrl = true;
+    } else if (prevId && currentId === undefined) {
+      // ID -> undefined: clearing selection, reconnect
+      shouldReconnect = true;
+      shouldClearAudioUrl = true;
+    } else if (prevId !== currentId && prevId && currentId) {
+      // Different IDs: switching transcriptions, reconnect
+      shouldReconnect = true;
+      shouldClearAudioUrl = true;
+    }
+
+    // Clear the current session's audioUrl when switching transcriptions
+    // This prevents the old audioUrl from overwriting the newly selected transcription's audio
+    if (shouldClearAudioUrl) {
+      console.log(`[AudioRecorder] Clearing audioUrl due to transcription switch`);
+      setAudioUrl(null);
+      setRecordedDuration(null);
+      setRecordingCompleted(false);
+    }
+
+    if (shouldReconnect) {
+      console.log(`[AudioRecorder] Transcription context changed from ${prevId} to ${currentId} - reconnecting WebSocket`);
+
+      // Disconnect and reconnect to reset backend state
+      wsClient.disconnect();
+      setTimeout(async () => {
+        try {
+          await wsClient.connect(selectedModel);
+          wsClient.setChannel(selectedChannel);
+        } catch (error) {
+          console.error('Error reconnecting WebSocket:', error);
+        }
+      }, 100);
+    } else if (prevId !== currentId) {
+      console.log(`[AudioRecorder] Transcription ID changed from ${prevId} to ${currentId} but keeping WebSocket connected (same context)`);
+    }
+
+    currentTranscriptionIdRef.current = currentId;
+  }, [resumeTranscriptionId, selectedModel, selectedChannel]);
 
   // Load default model on startup (runs in parallel with transcription loading)
   useEffect(() => {
@@ -86,13 +156,8 @@ const AudioRecorder = ({ onTranscription, onStatus, onRecordingStateChange, load
         setStatus('Transcribed');
       }
 
-      // If this is the final transcription, disconnect WebSocket
-      if (data.final) {
-        console.log('Received final transcription, disconnecting WebSocket');
-        setTimeout(() => {
-          wsClient.disconnect();
-        }, 500); // Short delay to ensure message is processed
-      }
+      // Don't disconnect after final transcription - keep WebSocket alive
+      // to preserve resume_transcription_id state for concatenation
     };
 
     const handleStatus = (data) => {
@@ -101,11 +166,16 @@ const AudioRecorder = ({ onTranscription, onStatus, onRecordingStateChange, load
         onStatus(data.message);
       }
 
-      // Capture audio URL when recording is complete
+      // Capture audio URL and duration when recording is complete
       if (data.audio_url) {
         setAudioUrl(data.audio_url);
         setRecordingCompleted(true);
         console.log('Audio file available:', data.audio_url);
+      }
+      // Capture duration from backend (total duration including concatenated audio)
+      if (data.duration_seconds !== undefined) {
+        setRecordedDuration(data.duration_seconds);
+        console.log('Recording duration from backend:', data.duration_seconds, 'seconds');
       }
     };
 
@@ -184,15 +254,53 @@ const AudioRecorder = ({ onTranscription, onStatus, onRecordingStateChange, load
       setIsConnecting(true);
       setStatus('Starting recording...');
 
+      // If starting a fresh recording (no audio to resume), reconnect to clear backend state
+      if (!loadedAudioPath) {
+        console.log('[AudioRecorder] Starting fresh recording - reconnecting WebSocket to clear backend state');
+        wsClient.disconnect();
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+
       // If not already connected, connect now
       if (!wsClient.isConnected || !wsClient.modelReady) {
         setStatus('Connecting...');
         await wsClient.connect(selectedModel);
       }
 
+      // Wait for WebSocket to be fully ready
+      let retries = 0;
+      while ((!wsClient.isConnected || !wsClient.modelReady) && retries < 20) {
+        console.log('[AudioRecorder] Waiting for WebSocket to be ready...', { isConnected: wsClient.isConnected, modelReady: wsClient.modelReady });
+        await new Promise(resolve => setTimeout(resolve, 100));
+        retries++;
+      }
+
+      if (!wsClient.isConnected || !wsClient.modelReady) {
+        throw new Error('WebSocket connection timeout');
+      }
+
+      console.log('[AudioRecorder] WebSocket is ready');
+
       // Always send channel selection when starting recording
       // This ensures the channel is set even if WebSocket reconnected
       wsClient.setChannel(selectedChannel);
+
+      // Longer delay to ensure WebSocket is ready to receive resume messages
+      await new Promise(resolve => setTimeout(resolve, 200));
+
+      // If resuming, send the appropriate resume message
+      console.log('[AudioRecorder] Starting recording - resumeTranscriptionId:', resumeTranscriptionId, 'loadedAudioPath:', loadedAudioPath);
+      if (resumeTranscriptionId && loadedAudioPath) {
+        // Have both ID and audio - resume from database record
+        console.log('[AudioRecorder] Resuming transcription ID:', resumeTranscriptionId, 'with audio:', loadedAudioPath);
+        wsClient.setResumeTranscription(resumeTranscriptionId);
+      } else if (loadedAudioPath) {
+        // Have audio but no ID - resume from audio file directly (unsaved transcription)
+        console.log('[AudioRecorder] Resuming from audio file:', loadedAudioPath);
+        wsClient.setResumeAudio(loadedAudioPath);
+      } else {
+        console.log('[AudioRecorder] NOT resuming - no audio to append to');
+      }
 
       setStatus('Connected');
 
@@ -239,6 +347,7 @@ const AudioRecorder = ({ onTranscription, onStatus, onRecordingStateChange, load
       setStatus('Recording...');
       setAudioUrl(null); // Clear previous audio
       setRecordingCompleted(false); // Reset completion status
+      setRecordedDuration(null); // Reset duration - will be set by backend after recording
 
       // Start timer
       timerIntervalRef.current = setInterval(() => {
