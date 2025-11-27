@@ -35,8 +35,6 @@ Both apps are accessible via your Tailscale network with automatic HTTPS:
 
 Replace `<your-tailnet>` with your Tailscale tailnet name (e.g., `tail60cd1d`).
 
-**Note**: Access from any device on your Tailscale network. Cannot access from the host Mac running the containers (use `http://localhost:5678` for local n8n testing).
-
 ## Quick Start
 
 ### Prerequisites
