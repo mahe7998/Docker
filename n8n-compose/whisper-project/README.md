@@ -9,7 +9,8 @@ A comprehensive real-time audio transcription system using MLX-Whisper on Apple 
 - **Sliding Window Approach**: Continuous transcription with intelligent text deduplication
 - **Start/Stop/Restart Recording**: Multiple recordings supported in the same session
 - **Audio Concatenation**: Resume and append new audio to previous recordings
-- **Model Selection**: Choose from whisper-tiny, base, small, or medium models at runtime
+- **Model Selection**: Choose from whisper-tiny, base, small, medium, large-v3, or turbo models at runtime
+- **Language Selection**: Force a specific language or auto-detect (50+ languages supported)
 - **Stereo Channel Selection**: Transcribe left channel, right channel, or mix both to mono
 - **Apple Silicon Optimized**: MLX acceleration for fast transcription on M1 or later Macs
 
@@ -30,6 +31,8 @@ A comprehensive real-time audio transcription system using MLX-Whisper on Apple 
 - **Rephrasing**: Rewrite text in a more professional tone
 - **Summarization**: Create concise summaries of transcriptions
 - **Text Improvement**: Overall enhancement (grammar + clarity + flow)
+- **Model Selection**: Choose from available Ollama models (thinking models auto-filtered)
+- **Settings Persistence**: Language and model preferences saved across sessions
 
 ### Editor
 - **TipTap Rich Text Editor**: Markdown editing with live preview
@@ -143,13 +146,14 @@ https://whisper.tail60cd1d.ts.net
 
 ### Recording and Transcribing
 
-1. **Select a Whisper model** from the dropdown (tiny, base, small, medium)
+1. **Select a Whisper model** from the dropdown (tiny, base, small, medium, large-v3, turbo)
 2. **Select audio channel** if recording stereo (left, right, or both)
-3. **Click "Start Recording"** - grant microphone permissions when prompted
-4. **Watch the live waveform** visualization as you speak
-5. **Transcription appears in real-time** in the editor (~6-9 second segments)
-6. **Click "Stop Recording"** when done - final audio chunk is transcribed
-7. **Restart recording** to continue adding to the same transcription
+3. **Configure settings** via the gear icon in the AI toolbar (language, Ollama model)
+4. **Click "Start Recording"** - grant microphone permissions when prompted
+5. **Watch the live waveform** visualization as you speak
+6. **Transcription appears in real-time** in the editor (~6-9 second segments)
+7. **Click "Stop Recording"** when done - final audio chunk is transcribed
+8. **Restart recording** to continue adding to the same transcription
 
 ### Audio Playback
 
@@ -176,10 +180,15 @@ https://whisper.tail60cd1d.ts.net
 Use the AI toolbar buttons to:
 - **Fix Grammar**: Correct spelling and grammar errors
 - **Rephrase**: Rewrite in a more professional tone
-- **Summarize**: Create a concise summary
 - **Improve**: Overall text enhancement (grammar + clarity + flow)
 
-All AI features use your local Ollama instance (llama3.2 by default).
+The current language and Ollama model are displayed inline after the AI action buttons. Click the gear icon to change settings.
+
+**Settings (accessible via gear icon):**
+- **Transcription Language**: Choose from 50+ languages or auto-detect
+- **Ollama Model**: Select from available models (thinking/reasoning models are filtered out for faster processing)
+
+All settings persist across browser sessions via localStorage.
 
 ### Saving Transcriptions
 
@@ -229,10 +238,12 @@ Models can be selected at runtime via the web UI dropdown. Available models:
 
 | Model | Size | Speed | Accuracy |
 |-------|------|-------|----------|
-| `mlx-community/whisper-tiny` | 71 MB | Fastest | Good for quick notes |
-| `mlx-community/whisper-base` | 138 MB | Fast | **Recommended** |
-| `mlx-community/whisper-small` | 461 MB | Medium | Better accuracy |
-| `mlx-community/whisper-medium` | 1.4 GB | Slower | High accuracy |
+| `mlx-community/whisper-tiny` | 75 MB | Fastest | Good for quick notes |
+| `mlx-community/whisper-base-mlx` | 145 MB | Fast | Good balance |
+| `mlx-community/whisper-small-mlx` | 483 MB | Medium | Better accuracy |
+| `mlx-community/whisper-medium-mlx` | 1.5 GB | Slower | High accuracy |
+| `mlx-community/whisper-large-v3-mlx` | 3 GB | Slowest | Highest accuracy |
+| `mlx-community/whisper-large-v3-turbo` | 809 MB | Fast | **Recommended** (best speed/accuracy) |
 
 Models are downloaded automatically from HuggingFace on first use.
 
@@ -243,14 +254,16 @@ For stereo recordings (e.g., from audio interfaces), select which channel to tra
 - **Left**: Transcribe only left channel
 - **Right**: Transcribe only right channel
 
-### Ollama Model
+### Ollama Model Selection
 
-The default Ollama model is `llama3.2`. To change:
+Ollama models can be selected via the Settings dialog in the web UI (click the gear icon in the AI toolbar).
 
-Edit `~/projects/python/mlx_whisper/app/ollama_client.py`:
-```python
-default_model: str = "llama3.2",  # Change to your preferred model
-```
+**Features:**
+- Models are loaded dynamically from your local Ollama instance
+- **Thinking/reasoning models are automatically filtered out** (qwen3, deepseek-r1, qwq, o1) as they are too slow for quick text review
+- Selected model is persisted in localStorage across sessions
+
+**Default fallback:** `llama3.2` if no model is selected
 
 Available models: https://ollama.ai/library
 
@@ -281,6 +294,7 @@ Lower values = more frequent updates (but more processing overhead)
 - `DELETE /api/transcriptions/{id}` - Delete transcription
 - `POST /api/transcriptions/transcribe` - Upload audio file for transcription
 - `POST /api/transcriptions/ai-review` - AI text review
+- `GET /api/transcriptions/ollama-models` - List available Ollama models (thinking models filtered)
 
 ### WebSocket Endpoint
 

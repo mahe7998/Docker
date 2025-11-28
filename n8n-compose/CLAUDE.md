@@ -204,7 +204,8 @@ The whisper-backend runs natively on the host Mac (not in Docker) for MLX Apple 
 - **Real-time streaming transcription** via WebSocket with sliding window approach
 - **Start/Stop/Restart recording** - Multiple recordings in same session supported
 - **Audio concatenation** - Resume and append to previous recordings
-- **Model selection** - Choose from whisper-tiny, base, small, medium models
+- **Model selection** - Choose from whisper-tiny, base, small, medium, large-v3, turbo models
+- **Language selection** - Force a specific language or auto-detect (50+ languages)
 - **Stereo channel selection** - Transcribe left, right, or both channels
 
 **Audio Playback:**
@@ -216,7 +217,9 @@ The whisper-backend runs natively on the host Mac (not in Docker) for MLX Apple 
 - **Save/Load transcriptions** - PostgreSQL storage with full CRUD operations
 - **Unsaved changes warning** - Confirmation dialog when switching with unsaved work
 - **Transcription selector** - Dropdown to load previous transcriptions
-- **AI review** - Grammar correction, rephrasing, summarization via Ollama
+- **AI review** - Grammar correction, rephrasing, text improvement via Ollama
+- **Ollama model selection** - Choose from available models (thinking models auto-filtered)
+- **Settings persistence** - Language and model preferences saved in localStorage
 
 **Editor:**
 - **TipTap rich text editor** - Markdown editing with live preview
@@ -260,3 +263,16 @@ docker-compose build --no-cache whisper-frontend && docker-compose up -d whisper
 After rebuilding, users should also clear their browser cache or do a hard refresh (Cmd+Shift+R on Mac, Ctrl+Shift+R on Windows/Linux) to load the new JavaScript bundle.
 
 **Why --no-cache is required**: Docker may cache the `COPY . .` layer if file timestamps haven't changed significantly, resulting in stale code being served even after edits.
+
+## Development Guidelines
+
+### Error Handling Philosophy
+
+**IMPORTANT**: When encountering errors or warnings, do NOT try to hide or suppress them unless you can confirm online that this is a known issue in a third-party library we do not control. Always investigate and fix the root cause:
+
+1. **Investigate first** - Trace the error to understand what's actually happening
+2. **Fix the root cause** - Don't suppress warnings or add workarounds that mask the real problem
+3. **Only suppress if confirmed** - Only suppress warnings if you can verify online that it's a known library issue with no fix available
+4. **Document suppressions** - If suppression is truly necessary, document why and link to the relevant issue
+
+Hiding errors is a recipe for failures that are hard to debug later.
