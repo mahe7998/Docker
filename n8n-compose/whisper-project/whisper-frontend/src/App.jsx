@@ -2,10 +2,11 @@
  * Main App Component
  * Combines AudioRecorder and TranscriptionEditor
  */
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import AudioRecorder from './components/AudioRecorder';
 import TranscriptionEditor from './components/TranscriptionEditor';
 import TranscriptionSelector from './components/TranscriptionSelector';
+import SettingsDialog from './components/SettingsDialog';
 import './App.css';
 
 function App() {
@@ -18,8 +19,30 @@ function App() {
   const [audioFilePath, setAudioFilePath] = useState(null);
   const [audioDurationSeconds, setAudioDurationSeconds] = useState(null);  // Duration from backend
   const [hasUnsavedRecording, setHasUnsavedRecording] = useState(false);  // Track if current recording is unsaved
+  const [showSettings, setShowSettings] = useState(false);  // Settings dialog visibility
+  const [settings, setSettings] = useState({ language: 'auto', ollamaModel: '' });  // App settings
   const editorRef = useRef(null);
   const isSelectingTranscriptionRef = useRef(false);  // Prevent audioUrl overwrite during selection
+
+  // Load settings from localStorage on mount
+  useEffect(() => {
+    try {
+      const savedSettings = localStorage.getItem('whisper-settings');
+      if (savedSettings) {
+        const parsed = JSON.parse(savedSettings);
+        setSettings(parsed);
+        console.log('[App.jsx] Loaded settings from localStorage:', parsed);
+      }
+    } catch (error) {
+      console.error('[App.jsx] Error loading settings:', error);
+    }
+  }, []);
+
+  // Handle settings change
+  const handleSettingsChange = (newSettings) => {
+    setSettings(newSettings);
+    console.log('[App.jsx] Settings updated:', newSettings);
+  };
 
   // Handle recording state changes
   // useCallback ensures this function reference stays stable across re-renders
@@ -52,11 +75,13 @@ function App() {
   }, []);
 
   // Handle incoming transcription from WebSocket
-  const handleTranscription = (data) => {
+  // useCallback ensures stable function reference to prevent listener re-registration
+  const handleTranscription = useCallback((data) => {
     console.log('App.jsx received transcription:', {
       dataText: data.text,
       dataTextLength: data.text?.length,
-      segmentsCount: data.segments?.length
+      segmentsCount: data.segments?.length,
+      isFinal: data.final
     });
 
     // With the new sliding window approach, we always append new text
@@ -85,17 +110,19 @@ function App() {
       });
     } else if (data.final && data.segments && data.segments.length === 0) {
       // Empty final message - just mark as final
+      console.log('App.jsx: Empty final message - marking transcription as final');
       setTranscriptionData((prev) => ({
         ...prev,
         final: true,
       }));
     }
-  };
+  }, []);
 
   // Handle status messages
-  const handleStatus = (message) => {
+  // useCallback ensures stable function reference
+  const handleStatus = useCallback((message) => {
     setStatusMessage(message);
-  };
+  }, []);
 
   // Handle successful save
   const handleSave = (data) => {
@@ -140,6 +167,14 @@ function App() {
       if (!confirmed) {
         return;  // User cancelled, don't switch
       }
+    } else if (!transcription && (hasUnsavedRecording || isModified)) {
+      // User selecting "New Transcription" but has unsaved changes
+      const confirmed = window.confirm(
+        'You have unsaved changes. If you start a new transcription, your current recording and transcription will be lost.\n\nDo you want to continue?'
+      );
+      if (!confirmed) {
+        return;  // User cancelled, don't switch
+      }
     }
 
     // Set flag to prevent audioUrl overwrite from useEffect
@@ -161,6 +196,7 @@ function App() {
       setHasUnsavedRecording(false);  // Clear unsaved flag when loading saved transcription
     } else {
       // Clear selection (starting new)
+      console.log('[App.jsx] Starting new transcription - clearing all state');
       setSelectedTranscription(null);
       setTranscriptionData(null);
       setAudioFilePath(null);
@@ -191,6 +227,17 @@ function App() {
   // Handle content modification
   const handleContentChange = () => {
     setIsModified(true);
+  };
+
+  // Handle clear (from TranscriptionEditor Clear button)
+  const handleClear = () => {
+    setTranscriptionData(null);
+    setAudioFilePath(null);
+    setAudioDurationSeconds(null);
+    setIsModified(false);
+    setHasUnsavedRecording(false);
+    // Don't clear selectedTranscription - user might want to keep the selection
+    // but just clear the content
   };
 
   return (
@@ -225,6 +272,7 @@ function App() {
             loadedAudioPath={audioFilePath}
             audioDuration={selectedTranscription?.duration_seconds}
             resumeTranscriptionId={selectedTranscription?.id}
+            language={settings.language}
           />
 
           {/* Transcription Editor */}
@@ -239,6 +287,10 @@ function App() {
             onSave={handleSave}
             onDelete={handleDelete}
             onContentChange={handleContentChange}
+            onClear={handleClear}
+            ollamaModel={settings.ollamaModel}
+            language={settings.language}
+            onOpenSettings={() => setShowSettings(true)}
           />
         </div>
       </main>
@@ -253,6 +305,14 @@ function App() {
           </p>
         </div>
       </footer>
+
+      {/* Settings Dialog */}
+      <SettingsDialog
+        isOpen={showSettings}
+        onClose={() => setShowSettings(false)}
+        settings={settings}
+        onSettingsChange={handleSettingsChange}
+      />
     </div>
   );
 }

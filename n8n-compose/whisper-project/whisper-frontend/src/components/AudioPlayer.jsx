@@ -33,7 +33,20 @@ const AudioPlayer = ({ audioUrl, durationSeconds }) => {
 
     const loadStartTime = performance.now();
 
-    const updateTime = () => setCurrentTime(audio.currentTime);
+    const updateTime = () => {
+      const current = audio.currentTime;
+      setCurrentTime(current);
+      // If currentTime exceeds our known duration, update duration dynamically
+      // This handles browser quirks with VBR-encoded or concatenated audio
+      // Use functional update to access current state value
+      setDuration(prevDuration => {
+        if (current > prevDuration && isFinite(current)) {
+          console.log('[AudioPlayer] currentTime exceeded duration, updating:', current);
+          return current;
+        }
+        return prevDuration;
+      });
+    };
     const updateDuration = () => {
       // Only use browser metadata if we don't have duration from database
       if (!durationSeconds || durationSeconds === 0) {
@@ -192,7 +205,9 @@ const AudioPlayer = ({ audioUrl, durationSeconds }) => {
             <div
               className="progress-fill"
               style={{
-                width: duration > 0 ? `${(currentTime / duration) * 100}%` : '0%'
+                // Clamp to 100% max to prevent overflow when currentTime exceeds duration
+                // (a known browser issue with VBR-encoded or concatenated audio)
+                width: duration > 0 ? `${Math.min((currentTime / duration) * 100, 100)}%` : '0%'
               }}
             />
           </div>

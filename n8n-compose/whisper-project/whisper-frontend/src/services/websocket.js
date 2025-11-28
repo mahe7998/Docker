@@ -229,6 +229,25 @@ class TranscriptionWebSocket {
   }
 
   /**
+   * Set language for transcription
+   * @param {string} language - Language code (e.g., 'en', 'fr', 'auto')
+   */
+  setLanguage(language) {
+    if (!this.isConnected || !this.ws) {
+      console.error('WebSocket not connected');
+      return;
+    }
+
+    const message = {
+      type: 'set_language',
+      language: language === 'auto' ? null : language,
+    };
+
+    console.log('Setting transcription language:', language);
+    this.ws.send(JSON.stringify(message));
+  }
+
+  /**
    * Add event listener
    */
   on(event, callback) {

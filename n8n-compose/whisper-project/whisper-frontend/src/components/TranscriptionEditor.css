@@ -44,6 +44,7 @@
   border-radius: var(--border-radius);
   margin-bottom: var(--spacing-md);
   flex-wrap: wrap;
+  row-gap: var(--spacing-md);
 }
 
 .toolbar-label {
@@ -65,6 +66,58 @@
 
 .btn-ai:hover:not(:disabled) {
   background-color: #7c3aed;
+}
+
+/* Inline settings in toolbar */
+.toolbar-divider {
+  width: 1px;
+  height: 20px;
+  background-color: var(--color-border);
+  margin: 0 var(--spacing-sm);
+}
+
+.settings-inline {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  margin-left: auto;
+}
+
+.settings-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+}
+
+.settings-label {
+  color: var(--color-text-muted);
+}
+
+.settings-value {
+  color: var(--color-text);
+  font-weight: 500;
+}
+
+.btn-tiny {
+  padding: 4px;
+  font-size: 0.75rem;
+  line-height: 1;
+}
+
+.btn-settings {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(100, 108, 255, 0.15);
+  border: 1px solid rgba(100, 108, 255, 0.3);
+  color: var(--color-primary);
+  border-radius: 4px;
+}
+
+.btn-settings:hover {
+  background-color: rgba(100, 108, 255, 0.25);
+  border-color: rgba(100, 108, 255, 0.5);
 }
 
 .btn-danger {

@@ -8,7 +8,7 @@ import AudioVisualizer from './AudioVisualizer';
 import AudioPlayer from './AudioPlayer';
 import './AudioRecorder.css';
 
-const AudioRecorder = ({ onTranscription, onStatus, onRecordingStateChange, loadedAudioPath, audioDuration, resumeTranscriptionId }) => {
+const AudioRecorder = ({ onTranscription, onStatus, onRecordingStateChange, loadedAudioPath, audioDuration, resumeTranscriptionId, language }) => {
   const [isRecording, setIsRecording] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isLoadingModel, setIsLoadingModel] = useState(false);
@@ -109,6 +109,16 @@ const AudioRecorder = ({ onTranscription, onStatus, onRecordingStateChange, load
 
     currentTranscriptionIdRef.current = currentId;
   }, [resumeTranscriptionId, selectedModel, selectedChannel]);
+
+  // Clear audio player when loadedAudioPath becomes null (e.g., selecting "New Transcription")
+  useEffect(() => {
+    if (loadedAudioPath === null) {
+      console.log('[AudioRecorder] loadedAudioPath is null - clearing audio player');
+      setAudioUrl(null);
+      setRecordedDuration(null);
+      setRecordingCompleted(false);
+    }
+  }, [loadedAudioPath]);
 
   // Load default model on startup (runs in parallel with transcription loading)
   useEffect(() => {
@@ -284,6 +294,11 @@ const AudioRecorder = ({ onTranscription, onStatus, onRecordingStateChange, load
       // Always send channel selection when starting recording
       // This ensures the channel is set even if WebSocket reconnected
       wsClient.setChannel(selectedChannel);
+
+      // Send language setting (null for auto-detect)
+      const languageCode = language === 'auto' ? null : language;
+      wsClient.setLanguage(languageCode);
+      console.log('[AudioRecorder] Setting language:', languageCode || 'auto-detect');
 
       // Longer delay to ensure WebSocket is ready to receive resume messages
       await new Promise(resolve => setTimeout(resolve, 200));

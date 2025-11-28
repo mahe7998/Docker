@@ -101,8 +101,11 @@ export const transcriptionAPI = {
 
   /**
    * Use AI to review/rewrite text
+   * @param {string} text - Text to review
+   * @param {string} action - Action to perform
+   * @param {string} model - Optional Ollama model to use
    */
-  aiReview: async (text, action) => {
+  aiReview: async (text, action, model = null) => {
     // Calculate dynamic timeout based on text length
     // Backend chunks text at 4000 words, processing each chunk sequentially
     // Estimate: ~0.4 seconds per word + 30 second base per chunk + 60 second overall base
@@ -113,12 +116,25 @@ export const transcriptionAPI = {
     // Base timeout: 60 seconds + (number of chunks * 30 seconds overhead) + (words * 0.4 seconds)
     const timeoutMs = (60 + (numChunks * 30) + (wordCount * 0.4)) * 1000.0;
 
-    console.log(`[API] AI Review: ${wordCount} words, ${numChunks} chunks, timeout: ${(timeoutMs/1000/60).toFixed(1)} minutes`);
+    console.log(`[API] AI Review: ${wordCount} words, ${numChunks} chunks, model: ${model || 'default'}, timeout: ${(timeoutMs/1000/60).toFixed(1)} minutes`);
+
+    const params = { text, action };
+    if (model) {
+      params.model = model;
+    }
 
     const response = await api.post('/transcriptions/ai-review', null, {
-      params: { text, action },
+      params,
       timeout: timeoutMs,
     });
+    return response.data;
+  },
+
+  /**
+   * Get list of available Ollama models
+   */
+  getOllamaModels: async () => {
+    const response = await api.get('/transcriptions/ollama-models');
     return response.data;
   },
 };

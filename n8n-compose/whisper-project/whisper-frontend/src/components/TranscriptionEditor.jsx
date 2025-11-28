@@ -12,6 +12,61 @@ import { transcriptionAPI } from '../services/api';
 import ReactMarkdown from 'react-markdown';
 import './TranscriptionEditor.css';
 
+// Language code to display name mapping
+const LANGUAGE_NAMES = {
+  auto: 'Auto-detect',
+  en: 'English',
+  zh: 'Chinese',
+  es: 'Spanish',
+  hi: 'Hindi',
+  ar: 'Arabic',
+  pt: 'Portuguese',
+  bn: 'Bengali',
+  ru: 'Russian',
+  ja: 'Japanese',
+  pa: 'Punjabi',
+  de: 'German',
+  jv: 'Javanese',
+  ko: 'Korean',
+  fr: 'French',
+  te: 'Telugu',
+  vi: 'Vietnamese',
+  mr: 'Marathi',
+  ta: 'Tamil',
+  tr: 'Turkish',
+  it: 'Italian',
+  th: 'Thai',
+  gu: 'Gujarati',
+  pl: 'Polish',
+  uk: 'Ukrainian',
+  ml: 'Malayalam',
+  kn: 'Kannada',
+  or: 'Oriya',
+  ro: 'Romanian',
+  nl: 'Dutch',
+  hu: 'Hungarian',
+  el: 'Greek',
+  cs: 'Czech',
+  sv: 'Swedish',
+  fi: 'Finnish',
+  id: 'Indonesian',
+  he: 'Hebrew',
+  no: 'Norwegian',
+  da: 'Danish',
+  sk: 'Slovak',
+  bg: 'Bulgarian',
+  ms: 'Malay',
+  hr: 'Croatian',
+  sr: 'Serbian',
+  ca: 'Catalan',
+  lt: 'Lithuanian',
+  sl: 'Slovenian',
+  lv: 'Latvian',
+  et: 'Estonian',
+  fa: 'Persian',
+  sw: 'Swahili',
+};
+
 const TranscriptionEditor = ({
   transcriptionData,
   selectedTranscription,
@@ -21,7 +76,11 @@ const TranscriptionEditor = ({
   audioDurationSeconds,
   onSave,
   onDelete,
-  onContentChange
+  onContentChange,
+  onClear,
+  ollamaModel,
+  language,
+  onOpenSettings
 }) => {
   const [title, setTitle] = useState('');
   const [showPreview, setShowPreview] = useState(false);
@@ -222,7 +281,7 @@ const TranscriptionEditor = ({
     setSaveStatus(`Processing ${wordCount} words...`);
 
     try {
-      const result = await transcriptionAPI.aiReview(text, action);
+      const result = await transcriptionAPI.aiReview(text, action, ollamaModel || null);
 
       // Replace editor content with AI result
       editor.commands.setContent(result.result);
@@ -274,7 +333,7 @@ const TranscriptionEditor = ({
 
     try {
       // Generate AI summary for the title
-      const result = await transcriptionAPI.aiReview(contentMd, 'summarize');
+      const result = await transcriptionAPI.aiReview(contentMd, 'summarize', ollamaModel || null);
       const summary = result.result.trim();
 
       // Show modal with proposed summary
@@ -399,11 +458,15 @@ const TranscriptionEditor = ({
     setProposedSummary('');
   };
 
-  // Clear editor
+  // Clear editor and audio
   const handleClear = () => {
-    if (confirm('Clear all content?')) {
+    if (confirm('Clear all content and audio?')) {
       editor?.commands.setContent('');
       setTitle('');
+      // Notify parent to clear audio as well
+      if (onClear) {
+        onClear();
+      }
     }
   };
 
@@ -432,7 +495,7 @@ const TranscriptionEditor = ({
         </div>
       </div>
 
-      {/* AI Toolbar */}
+      {/* AI Toolbar with Settings */}
       <div className="ai-toolbar">
         <span className="toolbar-label">AI Actions:</span>
         <button
@@ -456,6 +519,29 @@ const TranscriptionEditor = ({
         >
           {isAiProcessing && aiAction === 'improve' ? 'Processing...' : 'Improve'}
         </button>
+
+        <span className="toolbar-divider"></span>
+
+        <span className="settings-inline">
+          <span className="settings-item">
+            <span className="settings-label">Lang:</span>
+            <span className="settings-value">{LANGUAGE_NAMES[language] || language || 'Auto'}</span>
+          </span>
+          <span className="settings-item">
+            <span className="settings-label">Model:</span>
+            <span className="settings-value">{ollamaModel || 'Default'}</span>
+          </span>
+          <button
+            className="btn btn-tiny btn-settings"
+            onClick={onOpenSettings}
+            title="Open Settings"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="3"></circle>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+            </svg>
+          </button>
+        </span>
       </div>
 
       {/* Editor or Preview */}
