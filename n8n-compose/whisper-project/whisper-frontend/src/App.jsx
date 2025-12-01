@@ -20,7 +20,8 @@ function App() {
   const [audioDurationSeconds, setAudioDurationSeconds] = useState(null);  // Duration from backend
   const [hasUnsavedRecording, setHasUnsavedRecording] = useState(false);  // Track if current recording is unsaved
   const [showSettings, setShowSettings] = useState(false);  // Settings dialog visibility
-  const [settings, setSettings] = useState({ language: 'auto', ollamaModel: '' });  // App settings
+  const [settings, setSettings] = useState({ language: 'auto', ollamaModel: '', contextWords: 0 });  // App settings
+  const [isAiProcessing, setIsAiProcessing] = useState(false);  // Track AI processing state from editor
   const editorRef = useRef(null);
   const isSelectingTranscriptionRef = useRef(false);  // Prevent audioUrl overwrite during selection
 
@@ -259,7 +260,7 @@ function App() {
           {/* Transcription Selector */}
           <TranscriptionSelector
             onSelect={handleTranscriptionSelect}
-            disabled={isRecording}
+            disabled={isRecording || isAiProcessing}
             selectedId={selectedTranscription?.id}
             refreshTrigger={refreshTrigger}
           />
@@ -270,9 +271,10 @@ function App() {
             onStatus={handleStatus}
             onRecordingStateChange={handleRecordingStateChange}
             loadedAudioPath={audioFilePath}
-            audioDuration={selectedTranscription?.duration_seconds}
+            audioDuration={audioDurationSeconds ?? selectedTranscription?.duration_seconds}
             resumeTranscriptionId={selectedTranscription?.id}
             language={settings.language}
+            disabled={isAiProcessing}
           />
 
           {/* Transcription Editor */}
@@ -290,7 +292,9 @@ function App() {
             onClear={handleClear}
             ollamaModel={settings.ollamaModel}
             language={settings.language}
+            contextWords={settings.contextWords}
             onOpenSettings={() => setShowSettings(true)}
+            onAiProcessingChange={setIsAiProcessing}
           />
         </div>
       </main>

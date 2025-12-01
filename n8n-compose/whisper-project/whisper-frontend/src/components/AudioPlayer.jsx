@@ -9,18 +9,39 @@ const AudioPlayer = ({ audioUrl, durationSeconds }) => {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [hasError, setHasError] = useState(false);
+  const [cacheBuster, setCacheBuster] = useState(Date.now());  // Cache-busting timestamp
   const audioRef = useRef(null);
+
+  // Update cache buster when audioUrl or durationSeconds changes
+  // This forces the browser to reload the audio file when the content changes
+  // (e.g., after concatenation where the same filename now has different content)
+  useEffect(() => {
+    console.log('[AudioPlayer] URL or duration changed, updating cache buster');
+    setCacheBuster(Date.now());
+  }, [audioUrl, durationSeconds]);
 
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
 
-    console.log('[AudioPlayer] Loading audio - URL:', audioUrl);
+    // Build URL with cache buster to bypass browser cache
+    const urlWithCacheBuster = audioUrl + (audioUrl.includes('?') ? '&' : '?') + 't=' + cacheBuster;
+    console.log('[AudioPlayer] Loading audio - URL:', urlWithCacheBuster);
     console.log('[AudioPlayer] Duration from database:', durationSeconds);
 
     // Reset state when URL changes
     setCurrentTime(0);
     setIsPlaying(false);
+    setHasError(false);
+
+    // Force browser to flush cached audio and reload fresh file
+    // This is critical when the file content changes (e.g., after concatenation)
+    // See: https://stackoverflow.com/questions/15422592/html5-audio-to-reload-file
+    audio.pause();
+    audio.src = '';  // Clear the source to flush the buffer
+    audio.load();    // Force the audio element to reset
+    audio.src = urlWithCacheBuster;  // Set the new source with cache buster
+    audio.load();    // Load the new file
 
     // Use provided duration if available (from database), otherwise try to detect from metadata
     if (durationSeconds && durationSeconds > 0) {
@@ -124,7 +145,7 @@ const AudioPlayer = ({ audioUrl, durationSeconds }) => {
       audio.removeEventListener('waiting', handleWaiting);
       audio.removeEventListener('playing', handlePlaying);
     };
-  }, [audioUrl, durationSeconds]);
+  }, [audioUrl, durationSeconds, cacheBuster]);
 
   const togglePlayPause = async () => {
     const audio = audioRef.current;
@@ -170,7 +191,8 @@ const AudioPlayer = ({ audioUrl, durationSeconds }) => {
 
   return (
     <div className="audio-player">
-      <audio ref={audioRef} src={audioUrl} preload="none" />
+      {/* No src attribute here - it's set programmatically in useEffect with cache-busting timestamp */}
+      <audio ref={audioRef} preload="metadata" />
 
       {hasError && (
         <div style={{ color: '#ff6b6b', padding: '10px', textAlign: 'center' }}>

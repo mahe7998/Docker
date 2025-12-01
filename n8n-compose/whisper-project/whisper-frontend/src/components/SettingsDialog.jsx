@@ -61,11 +61,25 @@ const LANGUAGES = [
   { code: 'sw', name: 'Swahili' },
 ];
 
+// Default context window size options (in words, roughly 1/4 of token count)
+const CONTEXT_SIZE_OPTIONS = [
+  { value: 0, label: 'Auto (use model default)' },
+  { value: 1000, label: '1,000 words (~4K tokens)' },
+  { value: 2000, label: '2,000 words (~8K tokens)' },
+  { value: 4000, label: '4,000 words (~16K tokens)' },
+  { value: 8000, label: '8,000 words (~32K tokens)' },
+  { value: 16000, label: '16,000 words (~64K tokens)' },
+  { value: 32000, label: '32,000 words (~128K tokens)' },
+];
+
 const SettingsDialog = ({ isOpen, onClose, settings, onSettingsChange }) => {
   const [language, setLanguage] = useState(settings?.language || 'auto');
   const [ollamaModel, setOllamaModel] = useState(settings?.ollamaModel || '');
+  const [contextWords, setContextWords] = useState(settings?.contextWords || 0);
+  const [modelContextLength, setModelContextLength] = useState(null);
   const [availableModels, setAvailableModels] = useState([]);
   const [isLoadingModels, setIsLoadingModels] = useState(false);
+  const [isLoadingModelInfo, setIsLoadingModelInfo] = useState(false);
   const [modelError, setModelError] = useState(null);
 
   // Load available Ollama models when dialog opens
@@ -80,8 +94,30 @@ const SettingsDialog = ({ isOpen, onClose, settings, onSettingsChange }) => {
     if (settings) {
       setLanguage(settings.language || 'auto');
       setOllamaModel(settings.ollamaModel || '');
+      setContextWords(settings.contextWords || 0);
     }
   }, [settings]);
+
+  // Load model info when model changes
+  useEffect(() => {
+    if (ollamaModel) {
+      loadModelInfo(ollamaModel);
+    }
+  }, [ollamaModel]);
+
+  const loadModelInfo = async (modelName) => {
+    if (!modelName) return;
+    setIsLoadingModelInfo(true);
+    try {
+      const info = await transcriptionAPI.getOllamaModelInfo(modelName);
+      setModelContextLength(info.context_length || null);
+    } catch (error) {
+      console.error('Failed to load model info:', error);
+      setModelContextLength(null);
+    } finally {
+      setIsLoadingModelInfo(false);
+    }
+  };
 
   const loadOllamaModels = async () => {
     setIsLoadingModels(true);
@@ -107,6 +143,7 @@ const SettingsDialog = ({ isOpen, onClose, settings, onSettingsChange }) => {
     const newSettings = {
       language,
       ollamaModel,
+      contextWords: contextWords || 0,
     };
 
     // Save to localStorage
@@ -125,6 +162,7 @@ const SettingsDialog = ({ isOpen, onClose, settings, onSettingsChange }) => {
     if (settings) {
       setLanguage(settings.language || 'auto');
       setOllamaModel(settings.ollamaModel || '');
+      setContextWords(settings.contextWords || 0);
     }
     onClose();
   };
@@ -190,6 +228,32 @@ const SettingsDialog = ({ isOpen, onClose, settings, onSettingsChange }) => {
                 )}
               </select>
             )}
+          </div>
+
+          {/* Context Window Size */}
+          <div className="settings-section">
+            <label className="settings-label">
+              Context Window Size
+              <span className="settings-hint">
+                Max text chunk size for AI processing
+                {isLoadingModelInfo ? ' (loading...)' :
+                  modelContextLength ? ` (model default: ${modelContextLength.toLocaleString()} tokens)` : ''}
+              </span>
+            </label>
+            <select
+              className="settings-select"
+              value={contextWords}
+              onChange={(e) => setContextWords(parseInt(e.target.value))}
+            >
+              {CONTEXT_SIZE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <span className="settings-hint-small">
+              Larger texts will be split into chunks for processing
+            </span>
           </div>
         </div>
 

@@ -16,6 +16,7 @@ class TranscriptionWebSocket {
       disconnect: [],
       model_ready: [],
       download_progress: [],
+      processing_audio: [],
     };
   }
 
@@ -92,8 +93,12 @@ class TranscriptionWebSocket {
 
         this.ws.onerror = (error) => {
           console.error('WebSocket error:', error);
+          // Clean up handlers and timeout on error
+          this.off('model_ready', modelReadyHandler);
+          this.off('error', errorHandler);
+          clearTimeout(timeoutId);
           this._emit('error', { message: 'WebSocket connection error' });
-          reject(error);
+          reject(new Error('WebSocket connection failed. Is the backend running?'));
         };
 
         this.ws.onclose = () => {
@@ -286,6 +291,9 @@ class TranscriptionWebSocket {
         break;
       case 'download_progress':
         this._emit('download_progress', data);
+        break;
+      case 'processing_audio':
+        this._emit('processing_audio', data);
         break;
       case 'error':
         this._emit('error', data);

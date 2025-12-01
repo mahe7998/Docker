@@ -100,34 +100,244 @@ export const transcriptionAPI = {
   },
 
   /**
-   * Use AI to review/rewrite text
+   * Use AI to review/rewrite text (synchronous - for short texts)
    * @param {string} text - Text to review
    * @param {string} action - Action to perform
    * @param {string} model - Optional Ollama model to use
+   * @param {number} contextWords - Optional max context words for chunking
    */
-  aiReview: async (text, action, model = null) => {
+  aiReview: async (text, action, model = null, contextWords = null) => {
     // Calculate dynamic timeout based on text length
-    // Backend chunks text at 4000 words, processing each chunk sequentially
+    // Backend chunks text at contextWords (default 4000), processing each chunk sequentially
     // Estimate: ~0.4 seconds per word + 30 second base per chunk + 60 second overall base
     const wordCount = text.trim().split(/\s+/).length;
-    const chunkSize = 4000;
+    const chunkSize = contextWords || 4000;
     const numChunks = Math.ceil(wordCount / chunkSize);
 
     // Base timeout: 60 seconds + (number of chunks * 30 seconds overhead) + (words * 0.4 seconds)
     const timeoutMs = (60 + (numChunks * 30) + (wordCount * 0.4)) * 1000.0;
 
-    console.log(`[API] AI Review: ${wordCount} words, ${numChunks} chunks, model: ${model || 'default'}, timeout: ${(timeoutMs/1000/60).toFixed(1)} minutes`);
+    console.log(`[API] AI Review: ${wordCount} words, ${numChunks} chunks, model: ${model || 'default'}, contextWords: ${contextWords || 'default'}, timeout: ${(timeoutMs/1000/60).toFixed(1)} minutes`);
 
-    const params = { text, action };
+    // Send data in request body to avoid 414 error for long texts
+    const requestBody = { text, action };
     if (model) {
-      params.model = model;
+      requestBody.model = model;
+    }
+    if (contextWords) {
+      requestBody.context_words = contextWords;
     }
 
-    const response = await api.post('/transcriptions/ai-review', null, {
-      params,
+    const response = await api.post('/transcriptions/ai-review', requestBody, {
       timeout: timeoutMs,
     });
     return response.data;
+  },
+
+  /**
+   * Start an async AI review job (for longer texts)
+   * @param {string} text - Text to review
+   * @param {string} action - Action to perform
+   * @param {string} model - Optional Ollama model to use
+   * @param {number} contextWords - Optional max context words for chunking
+   * @returns {Promise<{job_id: string, status: string}>}
+   */
+  aiReviewAsync: async (text, action, model = null, contextWords = null) => {
+    // Send data in request body to avoid 414 error for long texts
+    const requestBody = { text, action };
+    if (model) {
+      requestBody.model = model;
+    }
+    if (contextWords) {
+      requestBody.context_words = contextWords;
+    }
+
+    const response = await api.post('/transcriptions/ai-review-async', requestBody, {
+      timeout: 30000, // Just needs to start the job, 30 seconds is plenty
+    });
+    return response.data;
+  },
+
+  /**
+   * Poll for async AI review job status
+   * @param {string} jobId - Job ID from aiReviewAsync
+   * @returns {Promise<{status: string, result?: string, error?: string}>}
+   */
+  getAiReviewStatus: async (jobId) => {
+    const response = await api.get(`/transcriptions/ai-review-status/${jobId}`, {
+      timeout: 10000,
+    });
+    return response.data;
+  },
+
+  /**
+   * Stream AI review using Server-Sent Events (SSE)
+   * Processes text in chunks and streams results as they complete.
+   *
+   * @param {string} text - Text to review
+   * @param {string} action - Action to perform
+   * @param {string} model - Optional Ollama model to use
+   * @param {number} contextWords - Optional max context words for chunking
+   * @param {object} callbacks - Event callbacks
+   * @param {function} callbacks.onStart - Called when processing starts with {total_chunks, action, model}
+   * @param {function} callbacks.onProgress - Called for each chunk with {chunk_index, total_chunks, chunk_result}
+   * @param {function} callbacks.onProcessing - Called when starting a chunk with {chunk_index, total_chunks, chunk_words}
+   * @param {function} callbacks.onComplete - Called when all chunks done with {total_chunks, action}
+   * @param {function} callbacks.onError - Called on error with {message}
+   * @returns {Promise<string>} - Complete processed text (all chunks joined)
+   */
+  aiReviewStream: (text, action, model = null, contextWords = null, callbacks = {}) => {
+    return new Promise((resolve, reject) => {
+      const wordCount = text.trim().split(/\s+/).length;
+      console.log(`[API] SSE AI review: ${wordCount} words, action: ${action}, model: ${model || 'default'}, contextWords: ${contextWords || 'default'}`);
+
+      // Build request body
+      const requestBody = { text, action };
+      if (model) requestBody.model = model;
+      if (contextWords) requestBody.context_words = contextWords;
+
+      // Collect chunk results
+      const chunkResults = [];
+
+      // Use fetch with SSE parsing (EventSource doesn't support POST)
+      fetch(`${API_BASE_URL}/transcriptions/ai-review-stream`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody),
+      })
+        .then(response => {
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = '';
+
+          const processStream = async () => {
+            while (true) {
+              const { done, value } = await reader.read();
+
+              if (done) {
+                console.log('[API] SSE stream ended');
+                break;
+              }
+
+              buffer += decoder.decode(value, { stream: true });
+
+              // Parse SSE events from buffer
+              const lines = buffer.split('\n');
+              buffer = lines.pop() || ''; // Keep incomplete line in buffer
+
+              let eventType = null;
+              let eventData = null;
+
+              for (const line of lines) {
+                if (line.startsWith('event: ')) {
+                  eventType = line.substring(7).trim();
+                } else if (line.startsWith('data: ')) {
+                  eventData = line.substring(6);
+
+                  if (eventType && eventData) {
+                    try {
+                      const data = JSON.parse(eventData);
+                      console.log(`[API] SSE event: ${eventType}`, data);
+
+                      switch (eventType) {
+                        case 'start':
+                          if (callbacks.onStart) callbacks.onStart(data);
+                          break;
+                        case 'processing':
+                          if (callbacks.onProcessing) callbacks.onProcessing(data);
+                          break;
+                        case 'progress':
+                          chunkResults[data.chunk_index] = data.chunk_result;
+                          if (callbacks.onProgress) callbacks.onProgress(data);
+                          break;
+                        case 'complete':
+                          if (callbacks.onComplete) callbacks.onComplete(data);
+                          // Join all chunks and resolve
+                          const result = chunkResults.join(' ');
+                          resolve(result);
+                          return;
+                        case 'error':
+                          if (callbacks.onError) callbacks.onError(data);
+                          reject(new Error(data.message));
+                          return;
+                      }
+                    } catch (e) {
+                      console.error('[API] SSE parse error:', e, 'data:', eventData);
+                    }
+                    eventType = null;
+                    eventData = null;
+                  }
+                }
+              }
+            }
+
+            // If we get here without complete event, check if we have results
+            if (chunkResults.length > 0) {
+              resolve(chunkResults.join(' '));
+            } else {
+              reject(new Error('Stream ended without results'));
+            }
+          };
+
+          processStream().catch(reject);
+        })
+        .catch(reject);
+    });
+  },
+
+  /**
+   * Smart AI review - uses SSE streaming for all texts
+   * @param {string} text - Text to review
+   * @param {string} action - Action to perform
+   * @param {string} model - Optional Ollama model to use
+   * @param {function} onProgress - Optional callback for progress updates (receives status string)
+   * @param {number} contextWords - Optional max context words for chunking
+   * @returns {Promise<{result: string}>}
+   */
+  aiReviewSmart: async (text, action, model = null, onProgress = null, contextWords = null) => {
+    const wordCount = text.trim().split(/\s+/).length;
+    console.log(`[API] Smart AI review: ${wordCount} words, action: ${action}`);
+
+    // Use SSE streaming for all requests (handles chunking on backend)
+    const result = await transcriptionAPI.aiReviewStream(
+      text,
+      action,
+      model,
+      contextWords,
+      {
+        onStart: (data) => {
+          console.log(`[API] Started: ${data.total_chunks} chunks, model: ${data.model}`);
+          if (onProgress) {
+            onProgress(`Starting... (${data.total_chunks} chunks)`);
+          }
+        },
+        onProcessing: (data) => {
+          if (onProgress) {
+            onProgress(`Processing chunk ${data.chunk_index + 1}/${data.total_chunks} (${data.chunk_words} words)...`);
+          }
+        },
+        onProgress: (data) => {
+          if (onProgress) {
+            onProgress(`Completed chunk ${data.chunk_index + 1}/${data.total_chunks}`);
+          }
+        },
+        onComplete: (data) => {
+          console.log(`[API] Complete: ${data.total_chunks} chunks`);
+          if (onProgress) {
+            onProgress('Processing complete!');
+          }
+        },
+        onError: (data) => {
+          console.error(`[API] Error: ${data.message}`);
+        },
+      }
+    );
+
+    return { result };
   },
 
   /**
@@ -135,6 +345,16 @@ export const transcriptionAPI = {
    */
   getOllamaModels: async () => {
     const response = await api.get('/transcriptions/ollama-models');
+    return response.data;
+  },
+
+  /**
+   * Get information about a specific Ollama model (including context window size)
+   * @param {string} modelName - Model name to query
+   * @returns {Promise<{name: string, context_length: number}>}
+   */
+  getOllamaModelInfo: async (modelName) => {
+    const response = await api.get(`/transcriptions/ollama-model-info/${encodeURIComponent(modelName)}`);
     return response.data;
   },
 };

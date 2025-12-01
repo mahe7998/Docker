@@ -8,10 +8,11 @@ import AudioVisualizer from './AudioVisualizer';
 import AudioPlayer from './AudioPlayer';
 import './AudioRecorder.css';
 
-const AudioRecorder = ({ onTranscription, onStatus, onRecordingStateChange, loadedAudioPath, audioDuration, resumeTranscriptionId, language }) => {
+const AudioRecorder = ({ onTranscription, onStatus, onRecordingStateChange, loadedAudioPath, audioDuration, resumeTranscriptionId, language, disabled }) => {
   const [isRecording, setIsRecording] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isLoadingModel, setIsLoadingModel] = useState(false);
+  const [isProcessingAudio, setIsProcessingAudio] = useState(false);  // True while ffmpeg processes audio
   const [recordingTime, setRecordingTime] = useState(0);
   const [status, setStatus] = useState('');
   const [selectedModel, setSelectedModel] = useState(() => {
@@ -122,6 +123,8 @@ const AudioRecorder = ({ onTranscription, onStatus, onRecordingStateChange, load
 
   // Load default model on startup (runs in parallel with transcription loading)
   useEffect(() => {
+    let isMounted = true;
+
     const loadDefaultModel = async () => {
       setIsLoadingModel(true);
 
@@ -129,15 +132,20 @@ const AudioRecorder = ({ onTranscription, onStatus, onRecordingStateChange, load
         // Status updates will come from WebSocket status handler
         await wsClient.connect(selectedModel);
 
-        // Send channel selection after model is loaded
-        wsClient.setChannel(selectedChannel);
+        // Only update state if component is still mounted
+        if (isMounted) {
+          // Send channel selection after model is loaded
+          wsClient.setChannel(selectedChannel);
 
-        // Model is ready - clear loading state
-        setIsLoadingModel(false);
+          // Model is ready - clear loading state
+          setIsLoadingModel(false);
+        }
       } catch (error) {
         console.error('Error loading default model:', error);
-        setStatus(`Error: ${error.message}`);
-        setIsLoadingModel(false);
+        if (isMounted) {
+          setStatus(`Connection error: ${error.message}. Try refreshing the page.`);
+          setIsLoadingModel(false);
+        }
       }
     };
 
@@ -145,6 +153,7 @@ const AudioRecorder = ({ onTranscription, onStatus, onRecordingStateChange, load
 
     // Cleanup on unmount
     return () => {
+      isMounted = false;
       wsClient.disconnect();
     };
   }, []); // Run once on mount
@@ -180,6 +189,7 @@ const AudioRecorder = ({ onTranscription, onStatus, onRecordingStateChange, load
       if (data.audio_url) {
         setAudioUrl(data.audio_url);
         setRecordingCompleted(true);
+        setIsProcessingAudio(false);  // Audio processing is complete
         console.log('Audio file available:', data.audio_url);
       }
       // Capture duration from backend (total duration including concatenated audio)
@@ -197,9 +207,21 @@ const AudioRecorder = ({ onTranscription, onStatus, onRecordingStateChange, load
       }
     };
 
+    const handleProcessingAudio = (data) => {
+      // Backend is processing audio (adding cue points for seeking)
+      // Disable recording button during this time
+      console.log('[AudioRecorder] Processing audio started:', data.message);
+      setIsProcessingAudio(true);
+      setStatus(data.message);
+      if (onStatus) {
+        onStatus(data.message);
+      }
+    };
+
     const handleError = (data) => {
       console.error('WebSocket error:', data);
       setStatus(`Error: ${data.message}`);
+      setIsProcessingAudio(false);  // Clear processing state on error
       // Don't auto-stop on errors - let user decide whether to stop
       // stopRecording();
     };
@@ -207,12 +229,14 @@ const AudioRecorder = ({ onTranscription, onStatus, onRecordingStateChange, load
     wsClient.on('transcription', handleTranscription);
     wsClient.on('status', handleStatus);
     wsClient.on('download_progress', handleDownloadProgress);
+    wsClient.on('processing_audio', handleProcessingAudio);
     wsClient.on('error', handleError);
 
     return () => {
       wsClient.off('transcription', handleTranscription);
       wsClient.off('status', handleStatus);
       wsClient.off('download_progress', handleDownloadProgress);
+      wsClient.off('processing_audio', handleProcessingAudio);
       wsClient.off('error', handleError);
     };
   }, [onTranscription, onStatus]);
@@ -265,7 +289,8 @@ const AudioRecorder = ({ onTranscription, onStatus, onRecordingStateChange, load
       setStatus('Starting recording...');
 
       // If starting a fresh recording (no audio to resume), reconnect to clear backend state
-      if (!loadedAudioPath) {
+      // Check both loadedAudioPath (from DB) and audioUrl (from current session)
+      if (!loadedAudioPath && !audioUrl) {
         console.log('[AudioRecorder] Starting fresh recording - reconnecting WebSocket to clear backend state');
         wsClient.disconnect();
         await new Promise(resolve => setTimeout(resolve, 100));
@@ -304,15 +329,21 @@ const AudioRecorder = ({ onTranscription, onStatus, onRecordingStateChange, load
       await new Promise(resolve => setTimeout(resolve, 200));
 
       // If resuming, send the appropriate resume message
-      console.log('[AudioRecorder] Starting recording - resumeTranscriptionId:', resumeTranscriptionId, 'loadedAudioPath:', loadedAudioPath);
-      if (resumeTranscriptionId && loadedAudioPath) {
+      // Use loadedAudioPath (from DB) or audioUrl (from current unsaved session)
+      const audioPathToResume = loadedAudioPath || audioUrl;
+      console.log('[AudioRecorder] Starting recording - resumeTranscriptionId:', resumeTranscriptionId);
+      console.log('[AudioRecorder] loadedAudioPath:', loadedAudioPath);
+      console.log('[AudioRecorder] audioUrl (internal state):', audioUrl);
+      console.log('[AudioRecorder] audioPathToResume:', audioPathToResume);
+      console.log('[AudioRecorder] wsClient.isConnected:', wsClient.isConnected, 'modelReady:', wsClient.modelReady);
+      if (resumeTranscriptionId && audioPathToResume) {
         // Have both ID and audio - resume from database record
-        console.log('[AudioRecorder] Resuming transcription ID:', resumeTranscriptionId, 'with audio:', loadedAudioPath);
+        console.log('[AudioRecorder] Sending setResumeTranscription:', resumeTranscriptionId, 'with audio:', audioPathToResume);
         wsClient.setResumeTranscription(resumeTranscriptionId);
-      } else if (loadedAudioPath) {
+      } else if (audioPathToResume) {
         // Have audio but no ID - resume from audio file directly (unsaved transcription)
-        console.log('[AudioRecorder] Resuming from audio file:', loadedAudioPath);
-        wsClient.setResumeAudio(loadedAudioPath);
+        console.log('[AudioRecorder] Sending setResumeAudio:', audioPathToResume);
+        wsClient.setResumeAudio(audioPathToResume);
       } else {
         console.log('[AudioRecorder] NOT resuming - no audio to append to');
       }
@@ -360,7 +391,11 @@ const AudioRecorder = ({ onTranscription, onStatus, onRecordingStateChange, load
       setIsConnecting(false);
       setRecordingTime(0);
       setStatus('Recording...');
-      setAudioUrl(null); // Clear previous audio
+      // Only clear audioUrl if starting fresh (not resuming from existing audio)
+      // When resuming, we need to keep audioUrl so the backend knows what to concatenate with
+      if (!audioPathToResume) {
+        setAudioUrl(null); // Clear previous audio only for fresh recordings
+      }
       setRecordingCompleted(false); // Reset completion status
       setRecordedDuration(null); // Reset duration - will be set by backend after recording
 
@@ -381,7 +416,8 @@ const AudioRecorder = ({ onTranscription, onStatus, onRecordingStateChange, load
   const stopRecording = () => {
     try {
       setIsRecording(false);
-      setStatus('Processing final audio...');
+      setIsProcessingAudio(true);  // Show "Optimizing audio..." immediately
+      setStatus('Processing audio...');
 
       // Clear timer
       if (timerIntervalRef.current) {
@@ -437,11 +473,11 @@ const AudioRecorder = ({ onTranscription, onStatus, onRecordingStateChange, load
 
         {/* Recording controls right after title */}
         <div className="recorder-controls">
-          {!isRecording && !isConnecting && (
+          {!isRecording && !isConnecting && !isProcessingAudio && (
             <button
               className="btn btn-primary btn-start"
               onClick={startRecording}
-              disabled={isLoadingModel}
+              disabled={isLoadingModel || disabled}
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -460,6 +496,13 @@ const AudioRecorder = ({ onTranscription, onStatus, onRecordingStateChange, load
           {isConnecting && (
             <button className="btn btn-secondary" disabled>
               Connecting...
+            </button>
+          )}
+
+          {isProcessingAudio && !isRecording && !isConnecting && (
+            <button className="btn btn-secondary" disabled>
+              <span className="spinner"></span>
+              Optimizing audio...
             </button>
           )}
 

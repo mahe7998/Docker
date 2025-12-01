@@ -83,6 +83,13 @@
   margin-top: 4px;
 }
 
+.settings-hint-small {
+  display: block;
+  font-size: 0.75rem;
+  color: #666;
+  margin-top: 6px;
+}
+
 .settings-select {
   width: 100%;
   padding: 10px 12px;
