@@ -9,16 +9,34 @@ Real-time audio transcription web application with AI-powered text enhancement a
 
 ## Architecture
 
-### Frontend (React + Vite)
+```
+Browser (Tailscale Network)
+https://whisper.tail60cd1d.ts.net
+    ↓
+Traefik (Docker) - TLS termination
+    ↓
+├── Frontend (Docker) - React + nginx serving static files
+│       ↓ (REST/WebSocket to localhost:8000)
+└── Backend (Host Mac) - FastAPI + MLX-Whisper (Apple Silicon GPU)
+        ↓
+    ├── PostgreSQL (Docker) - :5432
+    ├── Ollama (Host) - :11434
+    └── Audio Files (Host) - ~/projects/python/mlx_whisper/audio/
+```
+
+### Frontend (React + Vite) - **Runs in Docker**
 - **Location**: `whisper-project/whisper-frontend/`
+- **Deployment**: Docker container with nginx, built via `docker-compose build whisper-frontend`
+- **Access**: https://whisper.tail60cd1d.ts.net (via Tailscale + Traefik)
 - **Stack**: React 18, TipTap editor, WebSocket for real-time transcription
 - **Components**:
   - `AudioRecorder.jsx`: Captures audio and streams to backend via WebSocket
   - `TranscriptionEditor.jsx`: Rich text editor with AI review capabilities
   - `App.jsx`: Main component coordinating recorder and editor
 
-### Backend (Python + FastAPI)
+### Backend (Python + FastAPI) - **Runs on Host Mac**
 - **Location**: `~/projects/python/mlx_whisper/`
+- **Why Host**: Runs natively on Mac for MLX/Apple Silicon GPU acceleration (Docker doesn't support Metal)
 - **Stack**: FastAPI, MLX-Whisper, Ollama client, PostgreSQL
 - **Services**:
   - `app/main.py`: WebSocket endpoint for real-time transcription
@@ -27,7 +45,7 @@ Real-time audio transcription web application with AI-powered text enhancement a
   - `app/database.py`: PostgreSQL connection and models
   - `app/routers/websocket.py`: WebSocket handler with model download optimization
 
-### Database (PostgreSQL)
+### Database (PostgreSQL) - **Runs in Docker**
 - **Container**: `whisper-db`
 - **Credentials**: User: `whisper`, DB: `whisper`
 - **Schema**:
@@ -161,9 +179,9 @@ pip uninstall -y hf-xet
 
 ### Start Frontend + Database (Docker Compose)
 ```bash
-cd ~/projects/docker/n8n-compose/whisper-project
+cd ~/projects/docker/n8n-compose
 docker-compose up -d whisper-db whisper-frontend
-# Frontend: http://localhost:3000 (proxied via traefik)
+# Access: https://whisper.tail60cd1d.ts.net (via Tailscale)
 ```
 
 ### Check Services
@@ -344,8 +362,8 @@ pip uninstall -y hf-xet
    docker-compose up -d whisper-db whisper-frontend
    ```
 
-3. **Test the application**:
-   - Open http://localhost:3000
+3. **Test the application** (from any device on Tailscale network):
+   - Open https://whisper.tail60cd1d.ts.net
    - Select desired model from dropdown (Tiny loads by default)
    - Click "Start Recording" once model is ready
    - Speak into microphone
@@ -428,7 +446,7 @@ rm -rf ~/.cache/huggingface/hub/models--mlx-community--whisper-medium-mlx/
 
 ---
 
-**Last Updated**: 2025-11-18
-**Version**: 1.2
+**Last Updated**: 2025-12-01
+**Version**: 1.3
 **Status**: Production-ready for local use
-**Major Achievement**: Large model downloads (1.5GB+) now work reliably ✅
+**Key Changes**: Updated architecture to correctly reflect Docker deployment for frontend
