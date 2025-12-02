@@ -82,41 +82,46 @@ function App() {
       dataText: data.text,
       dataTextLength: data.text?.length,
       segmentsCount: data.segments?.length,
-      isFinal: data.final
+      isFinal: data.final,
+      isStreaming: data.streaming
     });
 
-    // With the new sliding window approach, we always append new text
-    // The backend handles deduplication and only sends new portions
-    if (data.segments && data.segments.length > 0) {
-      setTranscriptionData((prev) => {
-        if (!prev) {
-          // First transcription
-          console.log('App.jsx: First transcription, text:', data.text);
-          return {
-            segments: data.segments,
-            text: data.text || '',
-            final: data.final || false,
-          };
-        } else {
-          // Append new segments (backend already deduplicated)
-          const newText = prev.text + (prev.text && data.text ? ' ' : '') + (data.text || '');
-          console.log('App.jsx: Appending text. Previous length:', prev.text.length, 'New length:', newText.length);
-          console.log('App.jsx: Accumulated text preview:', newText.substring(0, 150));
-          return {
-            segments: [...prev.segments, ...data.segments],
-            text: newText,
-            final: data.final || false,
-          };
-        }
-      });
-    } else if (data.final && data.segments && data.segments.length === 0) {
-      // Empty final message - just mark as final
-      console.log('App.jsx: Empty final message - marking transcription as final');
-      setTranscriptionData((prev) => ({
-        ...prev,
-        final: true,
-      }));
+    // Backend handles deduplication - both streaming and final messages contain
+    // only NEW text that hasn't been sent before. We simply append all text.
+
+    const textToAppend = (data.text || '').trim();
+    const isFinal = data.final || false;
+    const hasSegments = data.segments && data.segments.length > 0;
+
+    // If there's no text and no segments, just mark as final if needed
+    if (!textToAppend && !hasSegments) {
+      if (isFinal) {
+        console.log('App.jsx: Empty final message - marking as final');
+        setTranscriptionData((prev) => prev ? { ...prev, final: true } : prev);
+      }
+      return;
     }
+
+    setTranscriptionData((prev) => {
+      if (!prev) {
+        // First transcription
+        console.log('App.jsx: First transcription, text:', textToAppend);
+        return {
+          segments: data.segments || [],
+          text: textToAppend,
+          final: isFinal,
+        };
+      } else {
+        // Append new text (backend already deduplicated)
+        const newText = prev.text + (prev.text && textToAppend ? ' ' : '') + textToAppend;
+        console.log(`App.jsx: ${isFinal ? 'Final' : 'Streaming'} - appending. Previous: ${prev.text.length}, Added: ${textToAppend.length}, Total: ${newText.length}`);
+        return {
+          segments: [...prev.segments, ...(data.segments || [])],
+          text: newText,
+          final: isFinal,
+        };
+      }
+    });
   }, []);
 
   // Handle status messages
