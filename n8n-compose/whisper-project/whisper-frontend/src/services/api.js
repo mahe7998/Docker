@@ -341,6 +341,38 @@ export const transcriptionAPI = {
   },
 
   /**
+   * Get audio file duration and estimated transcription time
+   * @param {string} audioPath - API path to audio file
+   * @returns {Promise<{duration: number, estimated_transcription_seconds: number}>}
+   */
+  getAudioDuration: async (audioPath) => {
+    const response = await api.get('/transcriptions/audio-duration', {
+      params: { audio_path: audioPath },
+      timeout: 0, // No timeout - ffprobe can be slow on large files
+    });
+    return response.data;
+  },
+
+  /**
+   * Re-transcribe an audio file by its server path
+   * @param {string} audioPath - API path to audio file (e.g., /api/audio/filename.webm)
+   * @param {string} language - Optional language code
+   * @returns {Promise<{segments: Array, text: string, markdown: string, duration: number}>}
+   */
+  retranscribe: async (audioPath, language = null) => {
+    const requestBody = { audio_path: audioPath };
+    if (language && language !== 'auto') {
+      requestBody.language = language;
+    }
+
+    // No timeout - transcription can take a very long time for large files
+    const response = await api.post('/transcriptions/transcribe-path', requestBody, {
+      timeout: 0, // No timeout
+    });
+    return response.data;
+  },
+
+  /**
    * Get list of available Ollama models
    */
   getOllamaModels: async () => {

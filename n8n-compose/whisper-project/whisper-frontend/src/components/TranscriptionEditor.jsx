@@ -89,6 +89,13 @@ const TranscriptionEditor = ({
   const [saveStatus, setSaveStatus] = useState('');
   const [showSummaryModal, setShowSummaryModal] = useState(false);
   const [proposedSummary, setProposedSummary] = useState('');
+  const [showRetranscribeModal, setShowRetranscribeModal] = useState(false);
+  const [retranscribeStatus, setRetranscribeStatus] = useState('');
+  const [isRetranscribing, setIsRetranscribing] = useState(false);
+  const [retranscribeProgress, setRetranscribeProgress] = useState(0);
+  const [audioDuration, setAudioDuration] = useState(0);
+  const [estimatedTime, setEstimatedTime] = useState(0);
+  const progressIntervalRef = useRef(null);
 
   const editor = useEditor({
     extensions: [
@@ -310,6 +317,134 @@ const TranscriptionEditor = ({
     }
   };
 
+  // Get saved transcription speed from localStorage (seconds of audio per second of processing)
+  const getSavedTranscriptionSpeed = () => {
+    try {
+      const saved = localStorage.getItem('whisper-transcription-speed');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return parsed.speed || 10; // Default: 10 seconds of audio per 1 second of processing
+      }
+    } catch (e) {
+      console.warn('Could not load transcription speed:', e);
+    }
+    return 10; // Default speed
+  };
+
+  // Save transcription speed to localStorage
+  const saveTranscriptionSpeed = (audioDurationSecs, processingTimeSecs) => {
+    // Only save if audio is longer than 30 seconds for accurate measurement
+    if (audioDurationSecs < 30) {
+      console.log('Audio too short to save speed estimate');
+      return;
+    }
+    try {
+      const speed = audioDurationSecs / processingTimeSecs;
+      localStorage.setItem('whisper-transcription-speed', JSON.stringify({
+        speed,
+        audioDuration: audioDurationSecs,
+        processingTime: processingTimeSecs,
+        savedAt: new Date().toISOString()
+      }));
+      console.log(`Saved transcription speed: ${speed.toFixed(2)}x (${audioDurationSecs.toFixed(1)}s audio in ${processingTimeSecs.toFixed(1)}s)`);
+    } catch (e) {
+      console.warn('Could not save transcription speed:', e);
+    }
+  };
+
+  // Handle re-transcription of the entire audio file
+  const handleRetranscribe = async () => {
+    if (!audioFilePath) {
+      alert('No audio file available to re-transcribe');
+      return;
+    }
+
+    // Show confirmation
+    if (!confirm('This will replace the current transcription with a fresh transcription of the entire audio file. Continue?')) {
+      return;
+    }
+
+    setShowRetranscribeModal(true);
+    setIsRetranscribing(true);
+    setRetranscribeProgress(0);
+
+    try {
+      // Use duration from prop (already loaded by audio player) instead of API call
+      const duration = audioDurationSeconds || 0;
+
+      // Use saved speed if available, otherwise default to 10x realtime
+      const savedSpeed = getSavedTranscriptionSpeed();
+      const estimatedSeconds = duration > 0 ? Math.max(5, duration / savedSpeed) : 30;
+
+      setAudioDuration(duration);
+      setEstimatedTime(estimatedSeconds);
+
+      const formatDuration = (secs) => {
+        const mins = Math.floor(secs / 60);
+        const remainingSecs = Math.floor(secs % 60);
+        return mins > 0 ? `${mins}m ${remainingSecs}s` : `${remainingSecs}s`;
+      };
+
+      setRetranscribeStatus(`Transcribing ${formatDuration(duration)} of audio (estimated ~${formatDuration(estimatedSeconds)})...`);
+
+      // Start a timer-based progress animation
+      const startTime = Date.now();
+      progressIntervalRef.current = setInterval(() => {
+        const elapsed = (Date.now() - startTime) / 1000;
+        // Progress follows a curve that approaches 95% asymptotically
+        const progress = Math.min(95, (elapsed / estimatedSeconds) * 90);
+        setRetranscribeProgress(progress);
+      }, 200);
+
+      const result = await transcriptionAPI.retranscribe(audioFilePath, language);
+
+      // Stop the progress timer
+      if (progressIntervalRef.current) {
+        clearInterval(progressIntervalRef.current);
+        progressIntervalRef.current = null;
+      }
+
+      // Calculate actual processing time and save speed for future estimates
+      // Use duration from result (actual transcribed audio length) for accurate speed calculation
+      const actualProcessingTime = (Date.now() - startTime) / 1000;
+      const actualDuration = result.duration || duration;
+      saveTranscriptionSpeed(actualDuration, actualProcessingTime);
+
+      // Set to 100%
+      setRetranscribeProgress(100);
+
+      // Replace editor content with new transcription
+      if (editor && result.text) {
+        isProgrammaticUpdateRef.current = true;
+        editor.commands.setContent(result.text);
+        lastTextRef.current = result.text;
+
+        // Reset flag after update
+        setTimeout(() => {
+          isProgrammaticUpdateRef.current = false;
+        }, 100);
+      }
+
+      setRetranscribeStatus('Transcription complete!');
+      setTimeout(() => {
+        setShowRetranscribeModal(false);
+        setIsRetranscribing(false);
+        setRetranscribeStatus('');
+        setRetranscribeProgress(0);
+      }, 1500);
+
+    } catch (error) {
+      console.error('Re-transcription error:', error);
+      // Stop the progress timer on error
+      if (progressIntervalRef.current) {
+        clearInterval(progressIntervalRef.current);
+        progressIntervalRef.current = null;
+      }
+      setRetranscribeStatus(`Error: ${error.message}`);
+      setIsRetranscribing(false);
+    }
+  };
+
   // Generate summary and show modal before saving
   const handleSave = async () => {
     if (!editor) return;
@@ -501,21 +636,29 @@ const TranscriptionEditor = ({
         <button
           className="btn btn-small btn-ai"
           onClick={() => handleAiReview('fix_grammar')}
-          disabled={isAiProcessing}
+          disabled={isAiProcessing || isRetranscribing}
         >
           {isAiProcessing && aiAction === 'fix_grammar' ? 'Processing...' : 'Fix Grammar'}
         </button>
         <button
+          className="btn btn-small btn-retranscribe"
+          onClick={handleRetranscribe}
+          disabled={isAiProcessing || isRetranscribing || !audioFilePath}
+          title={!audioFilePath ? 'No audio file available' : 'Re-transcribe the entire audio file'}
+        >
+          {isRetranscribing ? 'Transcribing...' : 'Re-transcribe'}
+        </button>
+        <button
           className="btn btn-small btn-ai"
           onClick={() => handleAiReview('rephrase')}
-          disabled={isAiProcessing}
+          disabled={isAiProcessing || isRetranscribing}
         >
           {isAiProcessing && aiAction === 'rephrase' ? 'Processing...' : 'Rephrase'}
         </button>
         <button
           className="btn btn-small btn-ai"
           onClick={() => handleAiReview('improve')}
-          disabled={isAiProcessing}
+          disabled={isAiProcessing || isRetranscribing}
         >
           {isAiProcessing && aiAction === 'improve' ? 'Processing...' : 'Improve'}
         </button>
@@ -615,6 +758,39 @@ const TranscriptionEditor = ({
                 Cancel
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Re-transcribe Progress Modal */}
+      {showRetranscribeModal && (
+        <div className="modal-overlay">
+          <div className="modal-content modal-progress" onClick={(e) => e.stopPropagation()}>
+            <h3>Re-transcribing Audio</h3>
+            <div className="progress-container">
+              <div className="progress-bar-container">
+                <div
+                  className="progress-bar-fill"
+                  style={{ width: `${retranscribeProgress}%` }}
+                ></div>
+              </div>
+              <p className="progress-percentage">{Math.round(retranscribeProgress)}%</p>
+              <p className="progress-status">{retranscribeStatus}</p>
+            </div>
+            {!isRetranscribing && (
+              <div className="modal-actions">
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => {
+                    setShowRetranscribeModal(false);
+                    setRetranscribeStatus('');
+                    setRetranscribeProgress(0);
+                  }}
+                >
+                  Close
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
