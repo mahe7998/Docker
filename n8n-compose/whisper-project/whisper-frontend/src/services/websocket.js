@@ -30,10 +30,10 @@ class TranscriptionWebSocket {
         this.selectedModel = model;
         this.modelReady = false;
 
-        // Determine WebSocket URL
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const host = window.location.host;
-        const wsUrl = `${protocol}//${host}/ws/transcribe`;
+        // Determine WebSocket URL - Tailscale Serve provides WSS on port 443
+        const hostname = window.location.hostname;
+        // Use wss:// for secure WebSocket - Tailscale Serve handles TLS termination
+        const wsUrl = `wss://${hostname}/ws/transcribe`;
 
         console.log('Connecting to WebSocket:', wsUrl, 'with model:', model);
 

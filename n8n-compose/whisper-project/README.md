@@ -1,6 +1,10 @@
-# Whisper Transcription System (MLX)
+# Whisper Transcription System
 
-A comprehensive real-time audio transcription system using MLX-Whisper on Apple Silicon, with AI-powered text review via Ollama, and Obsidian integration.
+A comprehensive real-time audio transcription system with AI-powered text review via Ollama, and Obsidian integration.
+
+**Supports multiple backends:**
+- **MLX-Whisper** on Apple Silicon (M1/M2/M3/M4 Macs)
+- **CUDA-Whisper** on NVIDIA GPUs (RTX 3090/4090 etc.)
 
 ## Features
 
@@ -46,52 +50,80 @@ A comprehensive real-time audio transcription system using MLX-Whisper on Apple 
 
 ## Architecture
 
+The frontend dynamically connects to the backend based on the browser's hostname. This allows the same frontend to work with different backend machines.
+
 ```
-┌─────────────────────────────────────────┐
-│ Browser (Tailscale Network)             │
-│ https://whisper.tail60cd1d.ts.net       │
-│ - Audio Recording (MediaRecorder API)   │
-│ - Live Waveform Visualization           │
-│ - Audio Player with Seek/Duration       │
-└────────────┬────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│ Browser (Tailscale Network)                                     │
+│ - Audio Recording (MediaRecorder API)                           │
+│ - Live Waveform Visualization                                   │
+│ - Dynamic Backend Detection (uses window.location.hostname)     │
+└────────────┬────────────────────────────────────────────────────┘
              │
+             │ HTTPS/WSS (port 443)
              ▼
-┌─────────────────────────────────────────┐
-│ Traefik (Reverse Proxy) [Docker]        │
-│ - TLS termination via Tailscale         │
-│ - Routing to frontend & backend         │
-└────────────┬────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│ Tailscale Serve (TLS Termination)                               │
+│ - Provides HTTPS on port 443                                    │
+│ - Proxies to localhost:8000                                     │
+│ - Automatic certificate management                              │
+└────────────┬────────────────────────────────────────────────────┘
              │
-    ┌────────┴────────┐
-    ▼                 ▼
-┌─────────┐    ┌──────────────────┐
-│ Frontend│    │  MLX-Whisper     │
-│ React   │◄──►│  Backend (Host)  │
-│ TipTap  │WS  │  FastAPI + MLX   │
-│ [Docker]│REST│  Apple Silicon   │
-└─────────┘    └───────┬──────────┘
-                       │
-         ┌─────────────┼─────────────┐
-         ▼             ▼             ▼
-    ┌─────────┐  ┌──────────┐  ┌──────────┐
-    │Postgres │  │  Ollama  │  │  Audio   │
-    │ [Docker]│  │  (Host)  │  │  Files   │
-    │  :5432  │  │  :11434  │  │  (Host)  │
-    └────┬────┘  └──────────┘  └──────────┘
-         │
-         ▼
-    ┌─────────┐
-    │ Obsidian│
-    └─────────┘
+             │ HTTP (localhost:8000)
+             ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ Whisper Backend (FastAPI + Uvicorn)                             │
+│                                                                 │
+│  Option A: MLX-Whisper (Mac)      Option B: CUDA-Whisper (Win)  │
+│  ┌─────────────────────────┐     ┌─────────────────────────┐    │
+│  │ Apple Silicon (M1-M4)   │     │ NVIDIA GPU (RTX 4090)   │    │
+│  │ ~/projects/python/      │     │ ~/projects/python/      │    │
+│  │   mlx_whisper/          │     │   cuda_whisper/         │    │
+│  └─────────────────────────┘     └─────────────────────────┘    │
+└────────────┬────────────────────────────────────────────────────┘
+             │
+    ┌────────┴────────┬─────────────┐
+    ▼                 ▼             ▼
+┌─────────┐    ┌──────────┐  ┌──────────┐
+│Postgres │    │  Ollama  │  │  Audio   │
+│ [Docker]│    │  (Host)  │  │  Files   │
+│  :5432  │    │  :11434  │  │  (Host)  │
+└────┬────┘    └──────────┘  └──────────┘
+     │
+     ▼
+┌─────────┐
+│ Obsidian│
+└─────────┘
 ```
 
-**Note**: The MLX-Whisper backend runs natively on the host Mac (not in Docker) for Apple Silicon GPU acceleration. See `~/projects/python/mlx_whisper/` for backend code.
+### Backend Options
+
+| Backend | Hardware | Location | Tailscale Hostname |
+|---------|----------|----------|-------------------|
+| MLX-Whisper | Apple Silicon Mac | `~/projects/python/mlx_whisper/` | `jacques-m4-macbook-pro-max.tail60cd1d.ts.net` |
+| CUDA-Whisper | NVIDIA RTX 4090 | `~/projects/python/cuda_whisper/` | `14900k-rtx4090.tail60cd1d.ts.net` |
+
+### How Dynamic Backend Detection Works
+
+1. Frontend JavaScript reads `window.location.hostname` (the Tailscale hostname you accessed)
+2. API calls go to `https://${hostname}/api/...`
+3. WebSocket connects to `wss://${hostname}/ws/transcribe`
+4. Tailscale Serve on that machine provides TLS and proxies to the local backend on port 8000
+
+This means you can access either backend by visiting its Tailscale hostname directly.
 
 ## Prerequisites
 
+### For MLX Backend (Mac)
 1. **Apple Silicon Mac** (M1 or later) for MLX acceleration
    - The backend uses MLX-Whisper for GPU-accelerated transcription
 
+### For CUDA Backend (Windows)
+1. **NVIDIA GPU** (RTX 3090/4090 recommended) with CUDA support
+   - The backend uses faster-whisper with CUDA acceleration
+   - Requires CUDA toolkit and cuDNN installed
+
+### Common Requirements
 2. **Ollama** installed and running on host machine
    - Install: https://ollama.ai
    - Default port: 11434
@@ -298,7 +330,7 @@ Lower values = more frequent updates (but more processing overhead)
 
 ### WebSocket Endpoint
 
-- `ws://whisper.tail60cd1d.ts.net/ws/transcribe` - Real-time transcription
+- `wss://{tailscale-hostname}/ws/transcribe` - Real-time transcription (HTTPS via Tailscale Serve)
 
 **Client Messages:**
 ```json

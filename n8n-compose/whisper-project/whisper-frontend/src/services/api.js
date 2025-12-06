@@ -3,7 +3,15 @@
  */
 import axios from 'axios';
 
-const API_BASE_URL = '/api';
+// Dynamically construct API URL based on browser's hostname
+// Tailscale Serve provides HTTPS on port 443, proxying to backend on port 8000
+const getApiBaseUrl = () => {
+  const hostname = window.location.hostname;
+  // Use HTTPS - Tailscale Serve handles TLS termination
+  return `https://${hostname}/api`;
+};
+
+const API_BASE_URL = getApiBaseUrl();
 
 const api = axios.create({
   baseURL: API_BASE_URL,
