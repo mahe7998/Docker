@@ -105,12 +105,27 @@ The frontend dynamically connects to the backend based on the browser's hostname
 
 ### How Dynamic Backend Detection Works
 
-1. Frontend JavaScript reads `window.location.hostname` (the Tailscale hostname you accessed)
-2. API calls go to `https://${hostname}/api/...`
-3. WebSocket connects to `wss://${hostname}/ws/transcribe`
-4. Tailscale Serve on that machine provides TLS and proxies to the local backend on port 8000
+The frontend supports two modes of operation:
 
-This means you can access either backend by visiting its Tailscale hostname directly.
+**Mode 1: Direct Backend Access**
+Access the backend machine's hostname directly:
+- `https://jacques-m4-macbook-pro-max.tail60cd1d.ts.net/` → Uses Mac MLX backend
+- `https://14900k-rtx4090.tail60cd1d.ts.net/` → Uses Windows CUDA backend
+
+**Mode 2: Centralized Frontend with Backend Query Parameter**
+Access the Docker-hosted frontend and specify which backend to use:
+- `https://whisper.tail60cd1d.ts.net/?backend=jacques-m4-macbook-pro-max` → Mac MLX backend
+- `https://whisper.tail60cd1d.ts.net/?backend=14900k-rtx4090` → Windows CUDA backend
+
+The short hostname (without `.tail60cd1d.ts.net`) is automatically expanded.
+
+**How it works:**
+1. Frontend checks for `?backend=` query parameter
+2. If present, uses that hostname; otherwise uses `window.location.hostname`
+3. API calls go to `https://${backend}/api/...`
+4. WebSocket connects to `wss://${backend}/ws/transcribe`
+5. Audio files are fetched from the backend machine
+6. Tailscale Serve on the backend provides TLS and proxies to port 8000
 
 ## Prerequisites
 

@@ -1,0 +1,16 @@
+{
+  "TCP": {
+    "443": {
+      "HTTPS": true
+    }
+  },
+  "Web": {
+    "n8n.tail60cd1d.ts.net:443": {
+      "Handlers": {
+        "/": {
+          "Proxy": "https+insecure://localhost:443"
+        }
+      }
+    }
+  }
+}

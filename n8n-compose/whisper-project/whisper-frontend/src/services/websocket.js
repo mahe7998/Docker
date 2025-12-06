@@ -1,6 +1,7 @@
 /**
  * WebSocket client for real-time transcription
  */
+import { getBackendHostname } from './api';
 
 class TranscriptionWebSocket {
   constructor() {
@@ -31,7 +32,7 @@ class TranscriptionWebSocket {
         this.modelReady = false;
 
         // Determine WebSocket URL - Tailscale Serve provides WSS on port 443
-        const hostname = window.location.hostname;
+        const hostname = getBackendHostname();
         // Use wss:// for secure WebSocket - Tailscale Serve handles TLS termination
         const wsUrl = `wss://${hostname}/ws/transcribe`;
 

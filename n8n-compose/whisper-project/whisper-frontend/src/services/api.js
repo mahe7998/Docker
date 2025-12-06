@@ -3,15 +3,34 @@
  */
 import axios from 'axios';
 
-// Dynamically construct API URL based on browser's hostname
+// Get backend hostname from query parameter or fall back to current hostname
+// Usage: https://whisper.tail60cd1d.ts.net/?backend=jacques-m4-macbook-pro-max.tail60cd1d.ts.net
+const getBackendHostname = () => {
+  const urlParams = new URLSearchParams(window.location.search);
+  const backendParam = urlParams.get('backend');
+  if (backendParam) {
+    // If backend param doesn't include domain, append the tailnet domain
+    if (!backendParam.includes('.')) {
+      return `${backendParam}.tail60cd1d.ts.net`;
+    }
+    return backendParam;
+  }
+  // Fall back to current hostname (for direct backend access)
+  return window.location.hostname;
+};
+
+// Dynamically construct API URL based on backend hostname
 // Tailscale Serve provides HTTPS on port 443, proxying to backend on port 8000
 const getApiBaseUrl = () => {
-  const hostname = window.location.hostname;
+  const hostname = getBackendHostname();
   // Use HTTPS - Tailscale Serve handles TLS termination
   return `https://${hostname}/api`;
 };
 
 const API_BASE_URL = getApiBaseUrl();
+
+// Export for use by websocket.js
+export { getBackendHostname };
 
 const api = axios.create({
   baseURL: API_BASE_URL,

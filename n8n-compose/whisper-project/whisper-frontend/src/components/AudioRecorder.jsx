@@ -4,6 +4,7 @@
  */
 import { useState, useRef, useEffect } from 'react';
 import wsClient from '../services/websocket';
+import { getBackendHostname } from '../services/api';
 import AudioVisualizer from './AudioVisualizer';
 import AudioPlayer from './AudioPlayer';
 import './AudioRecorder.css';
@@ -586,7 +587,7 @@ const AudioRecorder = ({ onTranscription, onStatus, onRecordingStateChange, load
       {!isRecording && loadedAudioPath && (
         <AudioPlayer
           key={`${loadedAudioPath}-${audioDuration || 'no-duration'}`}
-          audioUrl={loadedAudioPath}
+          audioUrl={`https://${getBackendHostname()}${loadedAudioPath}`}
           durationSeconds={audioDuration}
         />
       )}
