@@ -352,15 +352,51 @@ const TranscriptionEditor = ({
     }
   };
 
+  // Get saved diarization speed from localStorage (seconds of audio per second of processing)
+  const getSavedDiarizationSpeed = () => {
+    try {
+      const saved = localStorage.getItem('whisper-diarization-speed');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return parsed.speed || 2; // Default: 2 seconds of audio per 1 second of processing (slower than transcription)
+      }
+    } catch (e) {
+      console.warn('Could not load diarization speed:', e);
+    }
+    return 2; // Default speed (diarization is slower)
+  };
+
+  // Save diarization speed to localStorage
+  const saveDiarizationSpeed = (audioDurationSecs, processingTimeSecs) => {
+    // Only save if audio is longer than 30 seconds for accurate measurement
+    if (audioDurationSecs < 30) {
+      console.log('Audio too short to save diarization speed estimate');
+      return;
+    }
+    try {
+      const speed = audioDurationSecs / processingTimeSecs;
+      localStorage.setItem('whisper-diarization-speed', JSON.stringify({
+        speed,
+        audioDuration: audioDurationSecs,
+        processingTime: processingTimeSecs,
+        savedAt: new Date().toISOString()
+      }));
+      console.log(`Saved diarization speed: ${speed.toFixed(2)}x (${audioDurationSecs.toFixed(1)}s audio in ${processingTimeSecs.toFixed(1)}s)`);
+    } catch (e) {
+      console.warn('Could not save diarization speed:', e);
+    }
+  };
+
   // Handle re-transcription of the entire audio file
-  const handleRetranscribe = async () => {
+  const handleRetranscribe = async (diarize = false) => {
     if (!audioFilePath) {
       alert('No audio file available to re-transcribe');
       return;
     }
 
     // Show confirmation
-    if (!confirm('This will replace the current transcription with a fresh transcription of the entire audio file. Continue?')) {
+    const action = diarize ? 'diarize (identify speakers in)' : 're-transcribe';
+    if (!confirm(`This will replace the current transcription with a fresh ${diarize ? 'diarized ' : ''}transcription of the entire audio file. Continue?`)) {
       return;
     }
 
@@ -372,8 +408,8 @@ const TranscriptionEditor = ({
       // Use duration from prop (already loaded by audio player) instead of API call
       const duration = audioDurationSeconds || 0;
 
-      // Use saved speed if available, otherwise default to 10x realtime
-      const savedSpeed = getSavedTranscriptionSpeed();
+      // Use saved speed if available - diarization is slower than transcription
+      const savedSpeed = diarize ? getSavedDiarizationSpeed() : getSavedTranscriptionSpeed();
       const estimatedSeconds = duration > 0 ? Math.max(5, duration / savedSpeed) : 30;
 
       setAudioDuration(duration);
@@ -385,7 +421,8 @@ const TranscriptionEditor = ({
         return mins > 0 ? `${mins}m ${remainingSecs}s` : `${remainingSecs}s`;
       };
 
-      setRetranscribeStatus(`Transcribing ${formatDuration(duration)} of audio (estimated ~${formatDuration(estimatedSeconds)})...`);
+      const actionLabel = diarize ? 'Transcribing & identifying speakers in' : 'Transcribing';
+      setRetranscribeStatus(`${actionLabel} ${formatDuration(duration)} of audio (estimated ~${formatDuration(estimatedSeconds)})...`);
 
       // Start a timer-based progress animation
       const startTime = Date.now();
@@ -396,7 +433,7 @@ const TranscriptionEditor = ({
         setRetranscribeProgress(progress);
       }, 200);
 
-      const result = await transcriptionAPI.retranscribe(audioFilePath, language);
+      const result = await transcriptionAPI.retranscribe(audioFilePath, language, diarize);
 
       // Stop the progress timer
       if (progressIntervalRef.current) {
@@ -408,16 +445,31 @@ const TranscriptionEditor = ({
       // Use duration from result (actual transcribed audio length) for accurate speed calculation
       const actualProcessingTime = (Date.now() - startTime) / 1000;
       const actualDuration = result.duration || duration;
-      saveTranscriptionSpeed(actualDuration, actualProcessingTime);
+      if (diarize) {
+        saveDiarizationSpeed(actualDuration, actualProcessingTime);
+      } else {
+        saveTranscriptionSpeed(actualDuration, actualProcessingTime);
+      }
 
       // Set to 100%
       setRetranscribeProgress(100);
 
       // Replace editor content with new transcription
-      if (editor && result.text) {
+      // Use markdown (with speaker labels) for diarization, plain text otherwise
+      let newContent = diarize && result.markdown ? result.markdown : result.text;
+
+      // Convert \n\n to HTML paragraphs for TipTap editor
+      if (newContent && newContent.includes('\n\n')) {
+        newContent = newContent
+          .split('\n\n')
+          .map(p => `<p>${p}</p>`)
+          .join('');
+      }
+
+      if (editor && newContent) {
         isProgrammaticUpdateRef.current = true;
-        editor.commands.setContent(result.text);
-        lastTextRef.current = result.text;
+        editor.commands.setContent(newContent);
+        lastTextRef.current = newContent;
 
         // Reset flag after update
         setTimeout(() => {
@@ -642,11 +694,19 @@ const TranscriptionEditor = ({
         </button>
         <button
           className="btn btn-small btn-retranscribe"
-          onClick={handleRetranscribe}
+          onClick={() => handleRetranscribe(false)}
           disabled={isAiProcessing || isRetranscribing || !audioFilePath}
           title={!audioFilePath ? 'No audio file available' : 'Re-transcribe the entire audio file'}
         >
-          {isRetranscribing ? 'Transcribing...' : 'Re-transcribe'}
+          {isRetranscribing ? 'Processing...' : 'Re-transcribe'}
+        </button>
+        <button
+          className="btn btn-small btn-retranscribe"
+          onClick={() => handleRetranscribe(true)}
+          disabled={isAiProcessing || isRetranscribing || !audioFilePath}
+          title={!audioFilePath ? 'No audio file available' : 'Re-transcribe with speaker identification'}
+        >
+          {isRetranscribing ? 'Processing...' : 'Diarize'}
         </button>
         <button
           className="btn btn-small btn-ai"

@@ -384,10 +384,11 @@ export const transcriptionAPI = {
    * Re-transcribe an audio file by its server path
    * @param {string} audioPath - API path to audio file (e.g., /api/audio/filename.webm)
    * @param {string} language - Optional language code
+   * @param {boolean} diarize - Enable speaker diarization
    * @returns {Promise<{segments: Array, text: string, markdown: string, duration: number}>}
    */
-  retranscribe: async (audioPath, language = null) => {
-    const requestBody = { audio_path: audioPath };
+  retranscribe: async (audioPath, language = null, diarize = false) => {
+    const requestBody = { audio_path: audioPath, diarize };
     if (language && language !== 'auto') {
       requestBody.language = language;
     }
