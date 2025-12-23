@@ -1,5 +1,8 @@
 CVS/
 
+# OS files
+.DS_Store
+
 # Environment files with sensitive credentials
 .env
 *.env

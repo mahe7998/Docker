@@ -190,16 +190,29 @@ function App() {
       console.log('[App.jsx] Selected transcription:', transcription.id);
       console.log('[App.jsx] audio_file_path:', transcription.audio_file_path);
       console.log('[App.jsx] duration_seconds:', transcription.duration_seconds);
+
+      // Check if we're re-selecting the same transcription with unsaved recordings
+      // In that case, preserve the current audioFilePath (which has the new concatenated audio)
+      const isSameTranscription = selectedTranscription?.id === transcription.id;
+      const preserveAudio = isSameTranscription && hasUnsavedRecording && audioFilePath;
+
+      if (preserveAudio) {
+        console.log('[App.jsx] Re-selecting same transcription with unsaved recording - preserving audioFilePath:', audioFilePath);
+      }
+
       setSelectedTranscription(transcription);
-      setTranscriptionData({
-        text: transcription.current_content_md || transcription.content_md,
-        segments: [],
-        final: true,
-      });
-      setAudioFilePath(transcription.audio_file_path || null);
-      setAudioDurationSeconds(transcription.duration_seconds || null);
-      setIsModified(false);
-      setHasUnsavedRecording(false);  // Clear unsaved flag when loading saved transcription
+      // Don't set transcriptionData when loading - let the editor display saved content directly
+      // Setting transcriptionData here causes duplication: editor shows saved content, then
+      // new streaming text gets appended to saved content in transcriptionData, and the full
+      // combined text gets inserted into the editor (which already has the saved content)
+      setTranscriptionData(null);
+      // Preserve audio path if re-selecting same transcription with unsaved recordings
+      if (!preserveAudio) {
+        setAudioFilePath(transcription.audio_file_path || null);
+        setAudioDurationSeconds(transcription.duration_seconds || null);
+      }
+      setIsModified(preserveAudio ? isModified : false);
+      setHasUnsavedRecording(preserveAudio ? hasUnsavedRecording : false);
     } else {
       // Clear selection (starting new)
       console.log('[App.jsx] Starting new transcription - clearing all state');

@@ -94,3 +94,4 @@ Key files:
 - SSH key authentication preferred over passwords
 - Recent focus has been on improving security practices
 - Ok, please make a note to yoruself to always use "--no-cache" when updating the front-end
+- The front end is in a docker container
