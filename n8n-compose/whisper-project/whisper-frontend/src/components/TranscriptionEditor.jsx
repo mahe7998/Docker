@@ -212,7 +212,14 @@ const TranscriptionEditor = ({
       console.log('Loading selected transcription:', selectedTranscription.id);
 
       // Load content from selected transcription
-      const content = selectedTranscription.content_md || '';
+      // Convert markdown (\n\n) to HTML (<p>) for editor display
+      let content = selectedTranscription.content_md || '';
+      if (content.includes('\n\n')) {
+        content = content
+          .split('\n\n')
+          .map(p => `<p>${p}</p>`)
+          .join('');
+      }
 
       // Mark as programmatic update to prevent triggering isModified
       isProgrammaticUpdateRef.current = true;
@@ -538,11 +545,33 @@ const TranscriptionEditor = ({
     }
   };
 
+  // Convert markdown with double newlines to HTML paragraphs for editor
+  const markdownToHtml = (md) => {
+    if (!md || !md.includes('\n\n')) return md;
+    return md
+      .split('\n\n')
+      .map(p => `<p>${p}</p>`)
+      .join('');
+  };
+
+  // Convert HTML paragraphs back to markdown with double newlines
+  const htmlToMarkdown = (html) => {
+    // Replace </p><p> with double newline
+    // Handle both cases: with and without whitespace between tags
+    let md = html
+      .replace(/<\/p>\s*<p>/gi, '\n\n')
+      .replace(/<p>/gi, '')
+      .replace(/<\/p>/gi, '')
+      .replace(/<br\s*\/?>/gi, '\n');
+    return md.trim();
+  };
+
   // Actually save to database with confirmed title
   const handleConfirmSave = async () => {
     if (!editor) return;
 
-    const contentMd = editor.getText();
+    // Convert HTML to markdown for storage (preserves \n\n for speaker breaks)
+    const contentMd = htmlToMarkdown(editor.getHTML());
     if (!contentMd.trim()) {
       alert('Cannot save empty transcription');
       return;
